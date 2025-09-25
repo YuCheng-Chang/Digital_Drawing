@@ -77,7 +77,7 @@
   * 數據品質與同步精度報告
 ## 技術架構
 ### 系統架構圖
-![system_archietecture](../images/系統架構.png)
+![system_archietecture](./系統架構.png)
 ### 關鍵技術指標
 * 時間同步精度：< 1ms
 * 數據採樣率：
