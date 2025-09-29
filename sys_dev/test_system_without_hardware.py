@@ -1,3 +1,6 @@
+from InkProcessingSystemMainController import InkProcessingSystem
+from Config import ProcessingConfig, validate_config
+import time
 def test_system_without_hardware():
   """
   不需要實際硬體設備的測試版本

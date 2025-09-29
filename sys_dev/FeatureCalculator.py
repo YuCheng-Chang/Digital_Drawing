@@ -7,7 +7,7 @@ from scipy.spatial import ConvexHull
 from scipy.interpolate import interp1d
 from collections import deque
 import warnings
-from InkProcessingSystemMainController import ProcessingConfig
+from Config import ProcessingConfig
 from DigitalInkDataStructure import ProcessedInkPoint, StrokeStatistics
 
 class FeatureCalculator:

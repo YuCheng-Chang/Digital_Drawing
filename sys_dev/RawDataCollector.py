@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from enum import Enum
 import logging
 import json
-from InkProcessingSystemMainController import ProcessingConfig
+from Config import ProcessingConfig
 from DigitalInkDataStructure import *
 
 # 自定義異常類

@@ -2,7 +2,8 @@ import json
 import time
 from typing import Dict, List, Any
 from datetime import datetime
-from InkProcessingSystemMainController import InkProcessingSystem, ProcessingConfig
+from InkProcessingSystemMainController import InkProcessingSystem
+from Config import ProcessingConfig
 # ===== 基本使用範例 =====
 
 def basic_usage_example():

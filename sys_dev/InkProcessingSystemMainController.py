@@ -5,34 +5,12 @@ from typing import Dict, List, Optional, Callable, Any
 from dataclasses import dataclass
 import json
 import logging
+from Config import ProcessingConfig
 from BufferManager import BufferManager
 from RawDataCollector import RawDataCollector
 from PointProcessor import PointProcessor
 from StrokeDetector import StrokeDetector
 from FeatureCalculator import FeatureCalculator
-@dataclass
-class ProcessingConfig:
-    """系統處理配置"""
-    # 設備配置
-    device_type: str = "wacom"
-    target_sampling_rate: int = 200
-
-    # 處理參數
-    smoothing_enabled: bool = True
-    smoothing_window_size: int = 5
-    noise_threshold: float = 0.1
-
-    # 筆劃檢測參數
-    stroke_timeout: float = 0.5
-    min_stroke_points: int = 3
-    pressure_threshold: float = 0.05
-
-    # 特徵計算參數
-    feature_types: List[str] = None
-
-    def __post_init__(self):
-        if self.feature_types is None:
-            self.feature_types = ['basic', 'kinematic', 'pressure', 'geometric']
 
 class InkProcessingSystem:
     """

@@ -6,7 +6,7 @@ from collections import deque
 from scipy import signal
 from scipy.spatial.distance import euclidean
 from DigitalInkDataStructure import ProcessedInkPoint, StrokeState, EventType
-from InkProcessingSystemMainController import ProcessingConfig
+from Config import ProcessingConfig
 class StrokeDetector:
     """筆劃檢測器 - 負責檢測和管理筆劃邊界"""
     def __init__(self, config: ProcessingConfig):

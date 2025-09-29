@@ -8,7 +8,7 @@ import logging
 import weakref
 from dataclasses import dataclass
 import gc
-from InkProcessingSystemMainController import ProcessingConfig
+from Config import ProcessingConfig
 from DigitalInkDataStructure import ProcessedInkPoint, InkStroke, InkEvent
 
 @dataclass
