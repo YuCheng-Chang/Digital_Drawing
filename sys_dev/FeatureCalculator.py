@@ -46,6 +46,156 @@ class FeatureCalculator:
             'failed_calculations': 0
         }
 
+    def initialize(self) -> bool:
+        """
+        初始化特徵計算器
+        
+        Returns:
+            bool: 初始化是否成功
+        """
+        try:
+            self.logger.info("正在初始化特徵計算器...")
+            
+            # 重置統計資訊
+            self.calculation_stats = {
+                'total_calculations': 0,
+                'cache_hits': 0,
+                'cache_misses': 0,
+                'failed_calculations': 0
+            }
+            
+            # 清空緩存
+            self._calculation_cache.clear()
+            
+            # 驗證配置參數
+            if not self._validate_feature_config():
+                self.logger.error("特徵計算器配置無效")
+                return False
+            
+            # 初始化特徵參數
+            self._initialize_feature_parameters()
+            
+            self.logger.info("特徵計算器初始化成功")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"特徵計算器初始化失敗: {str(e)}")
+            return False
+
+    def _validate_feature_config(self) -> bool:
+        """驗證特徵計算配置"""
+        try:
+            # 檢查必要的配置參數
+            required_attrs = ['smoothing_window_size', 'max_point_distance']
+            
+            for attr in required_attrs:
+                if not hasattr(self.config, attr):
+                    self.logger.warning(f"缺少配置參數: {attr}，使用預設值")
+            
+            # 檢查特徵參數的合理性
+            if self.feature_params['smoothness_window'] <= 0:
+                self.feature_params['smoothness_window'] = 5
+                self.logger.warning("平滑度窗口大小無效，使用預設值 5")
+                
+            if self.feature_params['min_points_for_analysis'] <= 0:
+                self.feature_params['min_points_for_analysis'] = 3
+                self.logger.warning("最小分析點數無效，使用預設值 3")
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"配置驗證失敗: {str(e)}")
+            return False
+
+    def _initialize_feature_parameters(self) -> None:
+        """初始化特徵參數"""
+        try:
+            # 基於配置更新特徵參數
+            if hasattr(self.config, 'smoothing_window_size'):
+                self.feature_params['smoothness_window'] = self.config.smoothing_window_size
+            
+            if hasattr(self.config, 'complexity_threshold'):
+                self.feature_params['complexity_threshold'] = self.config.complexity_threshold
+            
+            self.logger.info(f"特徵參數已初始化: {self.feature_params}")
+            
+        except Exception as e:
+            self.logger.error(f"初始化特徵參數失敗: {str(e)}")
+
+    def shutdown(self) -> None:
+        """關閉特徵計算器，清理資源"""
+        try:
+            self.logger.info("正在關閉特徵計算器...")
+            
+            # 清空緩存
+            self._calculation_cache.clear()
+            
+            # 重置統計資訊
+            self.calculation_stats = {
+                'total_calculations': 0,
+                'cache_hits': 0,
+                'cache_misses': 0,
+                'failed_calculations': 0
+            }
+            
+            self.logger.info("特徵計算器已關閉")
+            
+        except Exception as e:
+            self.logger.error(f"關閉特徵計算器失敗: {str(e)}")
+
+    def calculate_features(self, stroke_points: List[ProcessedInkPoint]) -> Dict[str, Any]:
+        """
+        計算筆劃的所有特徵（兼容主控制器調用）
+        
+        Args:
+            stroke_points: 筆劃的所有點
+            
+        Returns:
+            Dict[str, Any]: 包含所有計算特徵的字典
+        """
+        try:
+            if not stroke_points or len(stroke_points) < 2:
+                return {}
+            
+            # 計算基本統計特徵
+            statistics = self.calculate_stroke_statistics(stroke_points)
+            
+            # 計算壓力動態特徵
+            pressure_dynamics = self.calculate_pressure_dynamics(stroke_points)
+            
+            # 計算節奏特徵
+            rhythm_features = self.calculate_rhythm_features(stroke_points)
+            
+            # 計算幾何特徵
+            geometric_features = self.extract_geometric_features(stroke_points)
+            
+            # 組合所有特徵
+            all_features = {
+                'basic_statistics': {
+                    'point_count': statistics.point_count,
+                    'total_length': statistics.total_length,
+                    'duration': statistics.duration,
+                    'width': statistics.width,
+                    'height': statistics.height,
+                    'average_pressure': statistics.average_pressure,
+                    'max_pressure': statistics.max_pressure,
+                    'average_velocity': statistics.average_velocity,
+                    'max_velocity': statistics.max_velocity,
+                    'smoothness': statistics.smoothness,
+                    'complexity': statistics.complexity,
+                    'tremor_index': statistics.tremor_index
+                },
+                'pressure_dynamics': pressure_dynamics,
+                'rhythm_features': rhythm_features,
+                'geometric_features': geometric_features
+            }
+            
+            return all_features
+            
+        except Exception as e:
+            self.logger.error(f"計算特徵失敗: {str(e)}")
+            return {}
+
     def calculate_stroke_statistics(self, points: List[ProcessedInkPoint]) -> StrokeStatistics:
         """
         計算筆劃的統計特徵

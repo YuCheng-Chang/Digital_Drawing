@@ -232,7 +232,59 @@ class RawDataCollector:
         except Exception as e:
             self.logger.error(f"獲取原始點失敗: {str(e)}")
             return None
+    def get_raw_points(self, timeout: float = 0.1) -> List[RawInkPoint]:
+        """
+        獲取原始墨水點列表（兼容主控制器調用）
+        使用混合策略：先快速批次獲取，如果沒有數據則等待
+        
+        Args:
+            timeout: 超時時間 (秒)
+            
+        Returns:
+            List[RawInkPoint]: 原始墨水點列表
+        """
+        # 第一步：快速批次獲取現有數據
+        points = self.get_raw_points_batch(max_count=50)
+        
+        # 如果已經有數據，直接返回
+        if points:
+            return points
+        
+        # 第二步：如果沒有數據，等待新數據到達
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            try:
+                # 等待至少一個點
+                remaining_timeout = timeout - (time.time() - start_time)
+                if remaining_timeout <= 0:
+                    break
+                    
+                point = self.data_queue.get(timeout=min(0.05, remaining_timeout))
+                points.append(point)
+                
+                # 獲得第一個點後，再快速收集更多點
+                additional_points = self.get_raw_points_batch(max_count=49)
+                points.extend(additional_points)
+                
+                break  # 有數據就返回
+                
+            except queue.Empty:
+                # 繼續等待直到超時
+                continue
+            except Exception as e:
+                self.logger.error(f"獲取原始點失敗: {str(e)}")
+                break
+        
+        return points
 
+    def get_buffer_size(self) -> int:
+        """
+        獲取緩衝區大小（主控制器統計需要）
+        
+        Returns:
+            int: 緩衝區中的點數量
+        """
+        return self.data_queue.qsize()
     def get_raw_points_batch(self, max_count: int = 100) -> List[RawInkPoint]:
         """
         批次獲取原始墨水點 (非阻塞式)
@@ -334,8 +386,26 @@ class RawDataCollector:
 
     def _validate_device_config(self, config: Dict[str, Any]) -> bool:
         """驗證設備配置"""
-        required_fields = ['device_type', 'device_path', 'sampling_rate']
-        return all(field in config for field in required_fields)
+        device_type = config.get('device_type')
+        
+        if not device_type:
+            self.logger.error("缺少 device_type 參數")
+            return False
+        
+        # 對於模擬器，只需要 device_type
+        if device_type.lower() == 'simulator':
+            self.logger.info("模擬器設備配置驗證通過")
+            return True
+        
+        # 對於真實設備，需要額外參數
+        required_fields = ['device_path', 'sampling_rate']
+        missing_fields = [field for field in required_fields if field not in config]
+        
+        if missing_fields:
+            self.logger.error(f"缺少必要參數: {missing_fields}")
+            return False
+        
+        return True
 
     def _setup_calibration(self, calibration_data: Dict[str, Any]) -> None:
         """設置校準數據"""
@@ -349,10 +419,15 @@ class RawDataCollector:
 
         try:
             while self.collection_active:
-                # 模擬數據收集 (實際實現需要調用設備API)
+                # 🔍 添加調試輸出
+                # self.logger.info("🔍 正在生成模擬數據點...")
+                
+                # 模擬數據收集
                 raw_point = self._simulate_data_point()
 
                 if raw_point:
+                    # self.logger.info(f"✅ 生成數據點: x={raw_point.x:.1f}, y={raw_point.y:.1f}, "
+                    #                 f"pressure={raw_point.pressure:.3f}")
                     try:
                         # 應用座標變換
                         if self.coordinate_transform:
@@ -361,16 +436,24 @@ class RawDataCollector:
                         self.data_queue.put(raw_point, timeout=0.01)
                         self.statistics['total_points'] += 1
                         self.statistics['last_point_timestamp'] = raw_point.timestamp
+                        # self.logger.info(f"✅ 數據點已加入隊列，隊列大小: {self.data_queue.qsize()}")
 
                     except queue.Full:
                         self.statistics['dropped_points'] += 1
                         self.logger.warning("數據隊列已滿，丟棄數據點")
+                else:
+                    self.logger.error("❌ 模擬數據點生成失敗")
 
-                # 控制採樣率
-                time.sleep(1.0 / self.device_config.get('sampling_rate', 200))
+                # 控制採樣率 - 修正採樣率獲取
+                sampling_rate = self.device_config.get('sampling_rate', 100)  # 預設100Hz
+                sleep_time = 1.0 / sampling_rate
+                # self.logger.info(f"🔍 採樣率: {sampling_rate}Hz, 睡眠時間: {sleep_time:.4f}s")
+                time.sleep(sleep_time)
 
         except Exception as e:
             self.logger.error(f"數據收集線程錯誤: {str(e)}")
+            import traceback
+            self.logger.error(f"詳細錯誤: {traceback.format_exc()}")
             self.statistics['error_count'] += 1
         finally:
             self.logger.info("數據收集線程結束")
@@ -446,6 +529,10 @@ class RawDataCollector:
     def _handle_simulator_device(self, config: Dict[str, Any]) -> bool:
         """處理模擬器設備初始化"""
         try:
+            # 為模擬器設置預設採樣率
+            if 'sampling_rate' not in config:
+                config['sampling_rate'] = 100  # 預設100Hz
+            
             self.device_info = {
                 'name': 'Simulator Device',
                 'model': 'Test Simulator',

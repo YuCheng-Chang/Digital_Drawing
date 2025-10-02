@@ -58,6 +58,142 @@ class StrokeDetector:
             'merges_performed': 0
         }
 
+    def initialize(self) -> bool:
+        """
+        初始化筆劃檢測器
+        
+        Returns:
+            bool: 初始化是否成功
+        """
+        try:
+            self.logger.info("正在初始化筆劃檢測器...")
+            
+            # 重置狀態
+            self.reset_state()
+            
+            # 重置統計資訊
+            self.reset_statistics()
+            
+            # 驗證配置參數
+            if not self._validate_detector_config():
+                self.logger.error("筆劃檢測器配置無效")
+                return False
+            
+            # 初始化檢測閾值
+            self._initialize_detection_thresholds()
+            
+            self.logger.info("筆劃檢測器初始化成功")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"筆劃檢測器初始化失敗: {str(e)}")
+            return False
+
+    def _validate_detector_config(self) -> bool:
+        """驗證檢測器配置"""
+        try:
+            # 檢查必要的配置參數
+            required_attrs = [
+                'pressure_threshold', 'velocity_threshold', 
+                'pause_duration_threshold', 'min_stroke_length'
+            ]
+            
+            for attr in required_attrs:
+                if not hasattr(self.config, attr):
+                    self.logger.error(f"缺少配置參數: {attr}")
+                    return False
+            
+            # 檢查參數值的合理性
+            if self.config.pressure_threshold <= 0 or self.config.pressure_threshold > 1:
+                self.logger.error(f"壓力閾值無效: {self.config.pressure_threshold}")
+                return False
+                
+            if self.config.velocity_threshold <= 0:
+                self.logger.error(f"速度閾值無效: {self.config.velocity_threshold}")
+                return False
+                
+            if self.config.pause_duration_threshold <= 0:
+                self.logger.error(f"暫停持續時間閾值無效: {self.config.pause_duration_threshold}")
+                return False
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"配置驗證失敗: {str(e)}")
+            return False
+
+    def _initialize_detection_thresholds(self) -> None:
+        """初始化檢測閾值"""
+        try:
+            # 從配置更新閾值
+            self.pressure_threshold = self.config.pressure_threshold
+            self.velocity_threshold = self.config.velocity_threshold
+            self.pause_duration_threshold = self.config.pause_duration_threshold
+            self.min_stroke_length = self.config.min_stroke_length
+            
+            # 設置其他檢測參數的預設值
+            if hasattr(self.config, 'min_stroke_duration'):
+                self.detection_thresholds['min_stroke_duration'] = self.config.min_stroke_duration
+            
+            if hasattr(self.config, 'max_stroke_duration'):
+                self.detection_thresholds['max_stroke_duration'] = self.config.max_stroke_duration
+            
+            self.logger.info(f"檢測閾值已設置: pressure={self.pressure_threshold}, "
+                            f"velocity={self.velocity_threshold}, "
+                            f"pause_duration={self.pause_duration_threshold}")
+            
+        except Exception as e:
+            self.logger.error(f"初始化檢測閾值失敗: {str(e)}")
+
+    def shutdown(self) -> None:
+        """關閉筆劃檢測器，清理資源"""
+        try:
+            self.logger.info("正在關閉筆劃檢測器...")
+            
+            # 重置狀態
+            self.reset_state()
+            
+            # 重置統計資訊
+            self.reset_statistics()
+            
+            self.logger.info("筆劃檢測器已關閉")
+            
+        except Exception as e:
+            self.logger.error(f"關閉筆劃檢測器失敗: {str(e)}")
+
+    def add_point(self, point: ProcessedInkPoint) -> None:
+        """
+        添加點到檢測器（兼容主控制器調用）
+        
+        Args:
+            point: 要添加的處理後點
+        """
+        try:
+            # 更新檢測歷史
+            self._update_detection_history(point)
+            
+            # 這裡可以添加實時檢測邏輯
+            # 例如：檢測筆劃事件、更新狀態等
+            
+        except Exception as e:
+            self.logger.error(f"添加點失敗: {str(e)}")
+
+    def get_completed_strokes(self) -> List[Any]:
+        """
+        獲取已完成的筆劃列表（兼容主控制器調用）
+        
+        Returns:
+            List[Any]: 已完成的筆劃列表
+        """
+        try:
+            # 這裡應該返回已檢測並驗證的完成筆劃
+            # 目前返回空列表，實際實現需要維護一個完成筆劃的緩衝區
+            return []
+            
+        except Exception as e:
+            self.logger.error(f"獲取完成筆劃失敗: {str(e)}")
+            return []
+
     def detect_stroke_event(self, current_point: ProcessedInkPoint,
                         previous_points: List[ProcessedInkPoint],
                         current_state: StrokeState) -> Tuple[StrokeState, Optional[EventType]]:

@@ -46,6 +46,157 @@ class PointProcessor:
             'low_quality_points': 0
         }
 
+    def initialize(self) -> bool:
+        """
+        初始化點處理器
+        
+        Returns:
+            bool: 初始化是否成功
+        """
+        try:
+            self.logger.info("正在初始化點處理器...")
+            
+            # 重置統計資訊
+            self.reset_statistics()
+            
+            # 清空平滑緩衝區
+            self.smoothing_buffer.clear()
+            
+            # 驗證配置參數
+            if not self._validate_config():
+                self.logger.error("點處理器配置無效")
+                return False
+            
+            # 設置預設設備邊界（如果沒有設置）
+            if not hasattr(self, 'device_bounds') or self.device_bounds is None:
+                self.device_bounds = (0, 0, 1000, 1000)
+                self.logger.info(f"使用預設設備邊界: {self.device_bounds}")
+            
+            # 初始化品質評估參數
+            self._initialize_quality_thresholds()
+            
+            self.logger.info("點處理器初始化成功")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"點處理器初始化失敗: {str(e)}")
+            return False
+
+    def _validate_config(self) -> bool:
+        """驗證配置參數"""
+        try:
+            # 檢查必要的配置參數
+            required_attrs = ['smoothing_window_size', 'max_point_distance', 'smoothing_enabled']
+            
+            for attr in required_attrs:
+                if not hasattr(self.config, attr):
+                    self.logger.error(f"缺少配置參數: {attr}")
+                    return False
+            
+            # 檢查參數值的合理性
+            if self.config.smoothing_window_size <= 0:
+                self.logger.error("平滑窗口大小必須大於0")
+                return False
+                
+            if self.config.max_point_distance <= 0:
+                self.logger.error("最大點距離必須大於0")
+                return False
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"配置驗證失敗: {str(e)}")
+            return False
+
+    def _initialize_quality_thresholds(self) -> None:
+        """初始化品質評估閾值"""
+        try:
+            # 基於配置更新品質閾值
+            self.quality_thresholds.update({
+                'max_distance_jump': self.config.max_point_distance,
+                'max_velocity_jump': getattr(self.config, 'max_velocity_jump', 10.0),
+                'max_pressure_jump': getattr(self.config, 'max_pressure_jump', 0.5),
+                'min_time_delta': getattr(self.config, 'min_time_delta', 1e-6),
+                'max_time_delta': getattr(self.config, 'max_time_delta', 0.1)
+            })
+            
+            self.logger.info(f"品質閾值已設置: {self.quality_thresholds}")
+            
+        except Exception as e:
+            self.logger.error(f"初始化品質閾值失敗: {str(e)}")
+
+    def shutdown(self) -> None:
+        """關閉點處理器，清理資源"""
+        try:
+            self.logger.info("正在關閉點處理器...")
+            
+            # 清空緩衝區
+            self.smoothing_buffer.clear()
+            
+            # 重置統計資訊
+            self.reset_statistics()
+            
+            self.logger.info("點處理器已關閉")
+            
+        except Exception as e:
+            self.logger.error(f"關閉點處理器失敗: {str(e)}")
+
+    # def process_point(self, raw_point: RawInkPoint) -> Optional[ProcessedInkPoint]:
+    #     """
+    #     處理單個原始墨水點（兼容主控制器調用）
+        
+    #     Args:
+    #         raw_point: 原始墨水點
+            
+    #     Returns:
+    #         Optional[ProcessedInkPoint]: 處理後的墨水點
+    #     """
+    #     try:
+    #         # 使用空的前置點列表調用原有方法
+    #         return self.process_raw_point(raw_point, previous_points=[])
+            
+    #     except Exception as e:
+    #         self.logger.error(f"處理點失敗: {str(e)}")
+    #         return None
+    def process_point(self, raw_point: RawInkPoint) -> Optional[ProcessedInkPoint]:
+        """
+        處理單個原始墨水點（兼容主控制器調用）
+        
+        Args:
+            raw_point: 原始墨水點
+            
+        Returns:
+            Optional[ProcessedInkPoint]: 處理後的墨水點
+        """
+        try:
+            # 🔍 添加調試輸出
+            self.logger.info(f"🔍 處理點: x={raw_point.x:.1f}, y={raw_point.y:.1f}, "
+                            f"pressure={raw_point.pressure:.3f}, "
+                            f"閾值={getattr(self.config, 'pressure_threshold', 'N/A')}")
+            
+            # 🔍 檢查壓力閾值
+            if hasattr(self.config, 'pressure_threshold'):
+                if raw_point.pressure < self.config.pressure_threshold:
+                    self.logger.info(f"❌ 點被壓力閾值過濾: {raw_point.pressure:.3f} < {self.config.pressure_threshold}")
+                    return None
+                else:
+                    self.logger.info(f"✅ 點通過壓力檢查: {raw_point.pressure:.3f} >= {self.config.pressure_threshold}")
+            
+            # 使用空的前置點列表調用原有方法
+            result = self.process_raw_point(raw_point, previous_points=[])
+            
+            if result:
+                self.logger.info(f"✅ 點處理成功")
+            else:
+                self.logger.info(f"❌ 點處理失敗")
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"處理點失敗: {str(e)}")
+            import traceback
+            self.logger.error(f"詳細錯誤: {traceback.format_exc()}")
+            return None
     def process_raw_point(self, raw_point: RawInkPoint,
                          previous_points: List[ProcessedInkPoint] = None) -> ProcessedInkPoint:
         """

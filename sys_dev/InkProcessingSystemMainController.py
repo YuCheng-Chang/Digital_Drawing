@@ -117,66 +117,68 @@ class InkProcessingSystem:
             self.logger.error(f"System initialization failed: {e}")
             return False
 
-    def start_processing(self) -> bool:
+    def start_processing(self, callbacks: Optional[Dict[str, callable]] = None) -> bool:
         """
-        開始處理流程
-
+        啟動處理管道
+        
+        Args:
+            callbacks: 回調函數字典
+            
         Returns:
-            bool: 是否成功開始處理
+            bool: 啟動是否成功
         """
-        if not self.is_running:
-            self.logger.error("System not initialized")
-            return False
-
-        if self.is_processing:
-            self.logger.warning("Processing already started")
-            return True
-
         try:
-            self.logger.info("Starting processing pipeline...")
+            # 🔍 添加明顯的調試輸出
+            print("🚀🚀🚀 MainController start_processing 被調用！")
+            self.logger.info("🚀🚀🚀 MainController start_processing 被調用！")
+            
+            if self.is_processing:
+                self.logger.warning("Processing pipeline is already running")
+                return False
 
-            # 重置統計資訊
-            self.processing_stats = {
-                'total_raw_points': 0,
-                'total_processed_points': 0,
-                'total_strokes': 0,
-                'total_features': 0,
-                'processing_start_time': time.time(),
-                'last_activity_time': time.time()
-            }
+            # 設置回調函數
+            if callbacks:
+                self.callbacks.update(callbacks)
 
-            # 清空緩衝區
-            self._clear_all_buffers()
-
-            # 重置停止事件
-            self.stop_event.clear()
+            # 🔧 修復：初始化處理開始時間
+            self.processing_stats['processing_start_time'] = time.time()
+            self.processing_stats['last_activity_time'] = time.time()
 
             # 啟動原始數據收集
             if not self.raw_collector.start_collection():
                 self.logger.error("Failed to start raw data collection")
                 return False
 
-            # 啟動處理執行緒
-            self._start_processing_threads()
-
+            # 設置處理標誌
             self.is_processing = True
-            self.logger.info("Processing pipeline started successfully")
+            self.stop_event.clear()
 
-            # 觸發狀態更新回調
-            self._trigger_callback('on_status_update', {
-                'status': 'processing_started',
-                'timestamp': time.time()
-            })
+            # 🔍 添加線程啟動調試
+            print("🔍🔍🔍 準備啟動處理線程...")
+            self.logger.info("🔍🔍🔍 準備啟動處理線程...")
+
+            # 啟動處理線程
+            self.processing_threads = [
+                threading.Thread(target=self._point_processing_loop, name="PointProcessing"),
+                threading.Thread(target=self._stroke_detection_loop, name="StrokeDetection"),
+                threading.Thread(target=self._feature_calculation_loop, name="FeatureCalculation"),
+                threading.Thread(target=self._status_monitoring_loop, name="StatusMonitoring")
+            ]
+
+            # 🔍 添加每個線程的啟動調試
+            for i, thread in enumerate(self.processing_threads):
+                print(f"🔍 啟動線程 {i+1}: {thread.name}")
+                self.logger.info(f"🔍 啟動線程 {i+1}: {thread.name}")
+                thread.start()
+
+            self.logger.info(f"Started {len(self.processing_threads)} processing threads")
+            self.logger.info("Processing pipeline started successfully")
 
             return True
 
         except Exception as e:
-            self.logger.error(f"Failed to start processing: {e}")
-            self._trigger_callback('on_error', {
-                'error_type': 'start_processing_error',
-                'message': str(e),
-                'timestamp': time.time()
-            })
+            self.logger.error(f"Failed to start processing pipeline: {str(e)}")
+            self.is_processing = False
             return False
 
     def _start_processing_threads(self):
@@ -222,21 +224,38 @@ class InkProcessingSystem:
 
     def _point_processing_loop(self):
         """點處理主循環"""
+        # 🔍 線程入口調試 - 最重要！
+        print("🎯🎯🎯 _point_processing_loop 線程已啟動！")
+        self.logger.info("🎯🎯🎯 _point_processing_loop 線程已啟動！")
+        
         self.logger.info("Point processing loop started")
 
         while self.is_processing and not self.stop_event.is_set():
             try:
+                # 🔍 添加調試輸出
+                print("🔍 嘗試獲取原始數據點...")
+                self.logger.info("🔍 嘗試獲取原始數據點...")
+                
                 # 從原始數據收集器獲取數據
                 raw_points = self.raw_collector.get_raw_points(timeout=0.1)
 
+                # 🔍 調試輸出
+                self.logger.info(f"🔍 獲取到 {len(raw_points) if raw_points else 0} 個原始點")
+                
                 if not raw_points:
+                    self.logger.info("🔍 沒有獲取到數據，繼續等待...")
                     continue
 
+                self.logger.info(f"✅ 開始處理 {len(raw_points)} 個點")
+
                 # 批量處理點
-                for raw_point in raw_points:
+                for i, raw_point in enumerate(raw_points):
+                    self.logger.info(f"🔍 處理第 {i+1} 個點: pressure={raw_point.pressure:.3f}")
+                    
                     processed_point = self.point_processor.process_point(raw_point)
 
                     if processed_point:
+                        self.logger.info(f"✅ 點處理成功")
                         # 加入處理後的點緩衝區
                         try:
                             self.processed_point_buffer.put_nowait(processed_point)
@@ -249,11 +268,17 @@ class InkProcessingSystem:
                                 self.processed_point_buffer.put_nowait(processed_point)
                             except queue.Empty:
                                 pass
+                    else:
+                        self.logger.info(f"❌ 點處理失敗")
 
                 self.processing_stats['total_raw_points'] += len(raw_points)
+                self.logger.info(f"📊 統計更新: 總原始點={self.processing_stats['total_raw_points']}, "
+                                f"總處理點={self.processing_stats['total_processed_points']}")
 
             except Exception as e:
                 self.logger.error(f"Point processing error: {e}")
+                import traceback
+                self.logger.error(f"詳細錯誤: {traceback.format_exc()}")
                 self._trigger_callback('on_error', {
                     'error_type': 'point_processing_error',
                     'message': str(e),
@@ -481,7 +506,14 @@ class InkProcessingSystem:
     def get_processing_statistics(self) -> Dict[str, Any]:
         """獲取處理統計資訊"""
         current_time = time.time()
-        start_time = self.processing_stats.get('processing_start_time', current_time)
+        
+        # 🔧 修復：安全獲取開始時間
+        start_time = self.processing_stats.get('processing_start_time')
+        if start_time is None:
+            # 如果沒有設置開始時間，使用當前時間
+            start_time = current_time
+            self.processing_stats['processing_start_time'] = start_time
+        
         duration = current_time - start_time
 
         stats = self.processing_stats.copy()
