@@ -10,7 +10,7 @@
 ### 目標
 建立穩定的數位墨水數據處理管線，能夠即時處理Wacom繪圖板的輸入數據。
 ### 關鍵技術
-* Universal Ink Library：使用Wacom官方提供的通用墨水函式庫
+* ![Universal Ink Library](https://github.com/Wacom-Developer/universal-ink-library)：使用Wacom官方提供的通用墨水函式庫
 * 即時數據處理：多執行緒架構處理高頻率輸入數據
 * 筆劃檢測：自動識別筆劃開始、進行中、結束狀態
 ### 主要功能
