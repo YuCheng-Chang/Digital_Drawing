@@ -392,12 +392,16 @@ class RawDataCollector:
             self.logger.error("缺少 device_type 參數")
             return False
         
-        # 對於模擬器，只需要 device_type
-        if device_type.lower() == 'simulator':
-            self.logger.info("模擬器設備配置驗證通過")
+        # ✅ 修正：PyQt5 集成模式不需要 device_path
+        # 對於通過 PyQt5 tabletEvent 接收數據的設備（wacom, simulator）
+        if device_type.lower() in ['simulator', 'wacom']:
+            self.logger.info(f"{device_type} 設備配置驗證通過（PyQt5 集成模式）")
+            # 確保有 sampling_rate
+            if 'sampling_rate' not in config:
+                config['sampling_rate'] = 200  # 預設值
             return True
         
-        # 對於真實設備，需要額外參數
+        # 對於需要直接訪問設備的類型（touch, mouse）
         required_fields = ['device_path', 'sampling_rate']
         missing_fields = [field for field in required_fields if field not in config]
         

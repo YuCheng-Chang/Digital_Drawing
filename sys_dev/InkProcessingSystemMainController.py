@@ -11,7 +11,7 @@ from RawDataCollector import RawDataCollector
 from PointProcessor import PointProcessor
 from StrokeDetector import StrokeDetector
 from FeatureCalculator import FeatureCalculator
-
+from DigitalInkDataStructure import RawInkPoint
 class InkProcessingSystem:
     """
     數位墨水處理系統主控制器
@@ -117,18 +117,18 @@ class InkProcessingSystem:
             self.logger.error(f"System initialization failed: {e}")
             return False
 
-    def start_processing(self, callbacks: Optional[Dict[str, callable]] = None) -> bool:
+    def start_processing(self, callbacks: Optional[Dict[str, callable]] = None, use_external_input: bool = False) -> bool:
         """
         啟動處理管道
         
         Args:
             callbacks: 回調函數字典
+            use_external_input: 是否使用外部輸入（PyQt5 集成模式）
             
         Returns:
             bool: 啟動是否成功
         """
         try:
-            # 🔍 添加明顯的調試輸出
             print("🚀🚀🚀 MainController start_processing 被調用！")
             self.logger.info("🚀🚀🚀 MainController start_processing 被調用！")
             
@@ -140,32 +140,42 @@ class InkProcessingSystem:
             if callbacks:
                 self.callbacks.update(callbacks)
 
-            # 🔧 修復：初始化處理開始時間
+            # 初始化處理開始時間
             self.processing_stats['processing_start_time'] = time.time()
             self.processing_stats['last_activity_time'] = time.time()
 
-            # 啟動原始數據收集
-            if not self.raw_collector.start_collection():
-                self.logger.error("Failed to start raw data collection")
-                return False
+            # ✅ 修正：只在非外部輸入模式下啟動 RawDataCollector
+            if not use_external_input:
+                if not self.raw_collector.start_collection():
+                    self.logger.error("Failed to start raw data collection")
+                    return False
+            else:
+                self.logger.info("使用外部輸入模式，跳過 RawDataCollector")
 
             # 設置處理標誌
             self.is_processing = True
             self.stop_event.clear()
 
-            # 🔍 添加線程啟動調試
             print("🔍🔍🔍 準備啟動處理線程...")
             self.logger.info("🔍🔍🔍 準備啟動處理線程...")
 
-            # 啟動處理線程
-            self.processing_threads = [
-                threading.Thread(target=self._point_processing_loop, name="PointProcessing"),
-                threading.Thread(target=self._stroke_detection_loop, name="StrokeDetection"),
-                threading.Thread(target=self._feature_calculation_loop, name="FeatureCalculation"),
-                threading.Thread(target=self._status_monitoring_loop, name="StatusMonitoring")
-            ]
+            # ✅ 修正：根據輸入模式決定啟動哪些線程
+            if use_external_input:
+                # 外部輸入模式：不需要點處理循環（直接在 process_raw_point 中處理）
+                self.processing_threads = [
+                    threading.Thread(target=self._stroke_detection_loop, name="StrokeDetection"),
+                    threading.Thread(target=self._feature_calculation_loop, name="FeatureCalculation"),
+                    threading.Thread(target=self._status_monitoring_loop, name="StatusMonitoring")
+                ]
+            else:
+                # 內部模擬模式：需要完整的處理鏈
+                self.processing_threads = [
+                    threading.Thread(target=self._point_processing_loop, name="PointProcessing"),
+                    threading.Thread(target=self._stroke_detection_loop, name="StrokeDetection"),
+                    threading.Thread(target=self._feature_calculation_loop, name="FeatureCalculation"),
+                    threading.Thread(target=self._status_monitoring_loop, name="StatusMonitoring")
+                ]
 
-            # 🔍 添加每個線程的啟動調試
             for i, thread in enumerate(self.processing_threads):
                 print(f"🔍 啟動線程 {i+1}: {thread.name}")
                 self.logger.info(f"🔍 啟動線程 {i+1}: {thread.name}")
@@ -180,6 +190,66 @@ class InkProcessingSystem:
             self.logger.error(f"Failed to start processing pipeline: {str(e)}")
             self.is_processing = False
             return False
+
+
+    def process_raw_point(self, point_data: Dict[str, Any]) -> bool:
+        """
+        處理外部輸入的原始點（用於 PyQt5 集成）
+        
+        Args:
+            point_data: 點數據字典，包含：
+                - x: float, X 座標
+                - y: float, Y 座標
+                - pressure: float, 壓力值
+                - timestamp: float, 時間戳
+                - tilt_x: float, X 軸傾斜角
+                - tilt_y: float, Y 軸傾斜角
+                
+        Returns:
+            bool: 是否成功處理
+        """
+        try:
+            
+            
+            # 轉換為 RawInkPoint
+            raw_point = RawInkPoint(
+                x=point_data['x'],
+                y=point_data['y'],
+                pressure=point_data.get('pressure', 0.5),
+                tilt_x=point_data.get('tilt_x', 0),
+                tilt_y=point_data.get('tilt_y', 0),
+                twist=point_data.get('twist', 0),
+                timestamp=point_data.get('timestamp', time.time()),
+                device_id='pyqt5_wacom',
+                button_state=point_data.get('button_state', 0)
+            )
+            
+            # 直接處理點（跳過 RawDataCollector 的模擬數據生成）
+            processed_point = self.point_processor.process_point(raw_point)
+            
+            if processed_point:
+                # 加入處理後的點緩衝區
+                try:
+                    self.processed_point_buffer.put_nowait(processed_point)
+                    self.processing_stats['total_raw_points'] += 1
+                    self.processing_stats['total_processed_points'] += 1
+                    self.processing_stats['last_activity_time'] = time.time()
+                    return True
+                except queue.Full:
+                    # 緩衝區滿，丟棄最舊的點
+                    try:
+                        self.processed_point_buffer.get_nowait()
+                        self.processed_point_buffer.put_nowait(processed_point)
+                        return True
+                    except queue.Empty:
+                        pass
+            
+            return False
+            
+        except Exception as e:
+            self.logger.error(f"處理外部點失敗: {e}")
+            return False
+
 
     def _start_processing_threads(self):
         """啟動所有處理執行緒"""
