@@ -171,8 +171,11 @@ class PointProcessor:
         try:
             # 🔍 添加調試輸出
             self.logger.info(f"🔍 處理點: x={raw_point.x:.1f}, y={raw_point.y:.1f}, "
-                            f"pressure={raw_point.pressure:.3f}, "
+                            f"pressure={raw_point.pressure:.3f}, "  # ← 移除逗號
+                            f"tiltX={raw_point.tilt_x:.3f}, "      # ← 移除逗號
+                            f"tiltY={raw_point.tilt_y:.3f}, "      # ← 移除逗號
                             f"閾值={getattr(self.config, 'pressure_threshold', 'N/A')}")
+
             
             # 🔍 檢查壓力閾值
             if hasattr(self.config, 'pressure_threshold'):
