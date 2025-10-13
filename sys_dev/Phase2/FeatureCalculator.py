@@ -273,22 +273,33 @@ class FeatureCalculator:
 
     def calculate_total_length(self, points: List[ProcessedInkPoint]) -> float:
         """
-        計算筆劃總長度
+        計算筆劃總長度（像素單位）
 
         Args:
             points: 筆劃點列表
 
         Returns:
-            float: 總長度
+            float: 總長度（像素單位）
         """
         try:
             if len(points) < 2:
                 return 0.0
 
+            # ✅✅✅ 修復：獲取畫布尺寸，轉換為像素座標計算
+            canvas_width = getattr(self.config, 'canvas_width', 800)
+            canvas_height = getattr(self.config, 'canvas_height', 600)
+
             total_length = 0.0
             for i in range(1, len(points)):
-                dx = points[i].x - points[i-1].x
-                dy = points[i].y - points[i-1].y
+                # ✅ 將歸一化座標轉換為像素座標
+                x1 = points[i-1].x * canvas_width
+                y1 = points[i-1].y * canvas_height
+                x2 = points[i].x * canvas_width
+                y2 = points[i].y * canvas_height
+                
+                # ✅ 計算像素距離
+                dx = x2 - x1
+                dy = y2 - y1
                 distance = math.sqrt(dx * dx + dy * dy)
                 total_length += distance
 
@@ -297,6 +308,7 @@ class FeatureCalculator:
         except Exception as e:
             self.logger.error(f"計算總長度失敗: {str(e)}")
             return 0.0
+
 
     def calculate_bounding_box(self, points: List[ProcessedInkPoint]) -> Tuple[float, float, float, float]:
         """
@@ -1042,11 +1054,18 @@ class FeatureCalculator:
         # 計算自相關性
         try:
             correlation = np.correlate(acc_changes, acc_changes, mode='full')
+            
+            # ✅✅✅ 修復：添加零檢查
+            center_value = correlation[len(correlation)//2]
+            if center_value == 0 or np.isnan(center_value):
+                return 0.0
+            
             max_corr = np.max(correlation[len(correlation)//2+1:])
-            normalized_corr = max_corr / correlation[len(correlation)//2]
+            normalized_corr = max_corr / center_value  # ✅ 安全除法
             return min(1.0, normalized_corr)
         except Exception:
             return 0.0
+
 
     def _calculate_periodicity(self, signal_data: List[float]) -> float:
         """計算週期性"""
@@ -1056,7 +1075,13 @@ class FeatureCalculator:
 
             # 計算自相關函數
             signal_array = np.array(signal_data)
-            signal_normalized = (signal_array - np.mean(signal_array)) / np.std(signal_array)
+            
+            # ✅✅✅ 修復：添加零標準差檢查
+            std = np.std(signal_array)
+            if std == 0 or np.isnan(std):
+                signal_normalized = signal_array - np.mean(signal_array)
+            else:
+                signal_normalized = (signal_array - np.mean(signal_array)) / std
 
             autocorr = np.correlate(signal_normalized, signal_normalized, mode='full')
             autocorr = autocorr[len(autocorr)//2:]
@@ -1071,6 +1096,7 @@ class FeatureCalculator:
 
         except Exception:
             return 0.0
+
 
     def _calculate_polygon_area(self, points: List[ProcessedInkPoint]) -> float:
         """計算多邊形面積 (使用鞋帶公式)"""

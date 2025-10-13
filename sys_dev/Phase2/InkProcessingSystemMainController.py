@@ -199,14 +199,8 @@ class InkProcessingSystem:
         處理外部輸入的原始點（用於 PyQt5 集成）
         
         Args:
-            point_data: 點數據字典，包含：
-                - x: float, X 座標
-                - y: float, Y 座標
-                - pressure: float, 壓力值
-                - timestamp: float, 時間戳
-                - tilt_x: float, X 軸傾斜角
-                - tilt_y: float, Y 軸傾斜角
-                
+            point_data: 點數據字典
+            
         Returns:
             bool: 是否成功處理
         """
@@ -224,20 +218,23 @@ class InkProcessingSystem:
                 button_state=point_data.get('button_state', 0)
             )
             
+            # ✅✅✅ 修復：改進壓力為 0 的處理邏輯
+            # 只有在壓力**完全為 0**（筆離開屏幕）時才結束筆劃
+            if raw_point.pressure == 0.0:
+                # 檢查是否有活躍筆劃需要結束
+                if self.stroke_detector.current_state in [StrokeState.ACTIVE, StrokeState.STARTING, StrokeState.ENDING]:
+                    self.logger.info(f"🔚 檢測到筆離開屏幕（壓力=0），強制完成當前筆劃 (stroke_id={self.stroke_detector.current_stroke_id})")
+                    self.stroke_detector.finalize_current_stroke()
+                return False
+            
             # 直接處理點（跳過 RawDataCollector 的模擬數據生成）
             processed_point = self.point_processor.process_point(raw_point)
             
-            # ✅✅✅ 新增：即使 processed_point 是 None，也要檢查是否需要結束筆劃
+            # ✅✅✅ 修復：如果點被壓力閾值過濾，不要立即結束筆劃
             if processed_point is None:
-                # 如果是因為壓力過低被過濾，且當前有活躍筆劃，強制結束
-                if (raw_point.pressure < self.config.pressure_threshold and 
-                    self.stroke_detector.current_state in [StrokeState.ACTIVE, StrokeState.STARTING, StrokeState.ENDING]):
-                    
-                    self.logger.info(f"🔚 檢測到壓力為 0，強制完成當前筆劃 (stroke_id={self.stroke_detector.current_stroke_id})")
-                    self.stroke_detector.finalize_current_stroke()
-                
+                # 點被過濾（壓力過低但不為 0），這是正常的，不結束筆劃
+                self.logger.debug(f"點被過濾: pressure={raw_point.pressure:.3f} < threshold={self.config.pressure_threshold}")
                 return False
-            # ✅✅✅ 新增結束
             
             # 加入處理後的點緩衝區
             try:
@@ -290,6 +287,7 @@ class InkProcessingSystem:
         except Exception as e:
             self.logger.error(f"處理外部點失敗: {e}")
             return False
+
 
     def _start_processing_threads(self):
         """啟動所有處理執行緒"""
@@ -424,19 +422,29 @@ class InkProcessingSystem:
                 # 檢查是否有完成的筆劃
                 completed_strokes = self.stroke_detector.get_completed_strokes()
 
-                for stroke in completed_strokes:
-                    # 加入筆劃緩衝區
-                    self.stroke_buffer.append(stroke)
+                for stroke_data in completed_strokes:
+                    # ✅✅✅ 關鍵修復：從字典中提取點列表
+                    stroke_points = stroke_data['points']  # List[ProcessedInkPoint]
+                    stroke_id = stroke_data['stroke_id']
+                    
+                    # 加入筆劃緩衝區（保存完整的字典）
+                    self.stroke_buffer.append(stroke_data)
                     self.processing_stats['total_strokes'] += 1
 
-                    # 觸發筆劃完成回調
+                    # ✅ 觸發筆劃完成回調（傳遞字典，包含點列表）
                     self._trigger_callback('on_stroke_completed', {
-                        'stroke': stroke,
+                        'stroke_id': stroke_id,
+                        'points': stroke_points,  # ✅ 傳遞點列表
+                        'num_points': len(stroke_points),
+                        'start_time': stroke_data['start_time'],
+                        'end_time': stroke_data['end_time'],
                         'timestamp': time.time()
                     })
 
             except Exception as e:
                 self.logger.error(f"Stroke detection error: {e}")
+                import traceback
+                self.logger.error(f"詳細錯誤: {traceback.format_exc()}")
                 self._trigger_callback('on_error', {
                     'error_type': 'stroke_detection_error',
                     'message': str(e),
@@ -457,16 +465,20 @@ class InkProcessingSystem:
                     continue
 
                 # 獲取最新的筆劃
-                stroke = self.stroke_buffer.popleft()
+                stroke_data = self.stroke_buffer.popleft()
+                
+                # ✅✅✅ 關鍵修復：提取點列表
+                stroke_points = stroke_data['points']  # List[ProcessedInkPoint]
+                stroke_id = stroke_data['stroke_id']
 
-                # 計算特徵
-                features = self.feature_calculator.calculate_features(stroke)
+                # ✅ 計算特徵（傳遞點列表）
+                features = self.feature_calculator.calculate_features(stroke_points)
 
                 if features:
                     # 加入特徵緩衝區
                     try:
                         self.feature_buffer.put_nowait({
-                            'stroke_id': stroke.stroke_id,
+                            'stroke_id': stroke_id,
                             'features': features,
                             'timestamp': time.time()
                         })
@@ -474,7 +486,7 @@ class InkProcessingSystem:
 
                         # 觸發特徵計算完成回調
                         self._trigger_callback('on_features_calculated', {
-                            'stroke_id': stroke.stroke_id,
+                            'stroke_id': stroke_id,
                             'features': features,
                             'timestamp': time.time()
                         })
@@ -484,7 +496,7 @@ class InkProcessingSystem:
                         try:
                             self.feature_buffer.get_nowait()
                             self.feature_buffer.put_nowait({
-                                'stroke_id': stroke.stroke_id,
+                                'stroke_id': stroke_id,
                                 'features': features,
                                 'timestamp': time.time()
                             })
@@ -493,6 +505,8 @@ class InkProcessingSystem:
 
             except Exception as e:
                 self.logger.error(f"Feature calculation error: {e}")
+                import traceback
+                self.logger.error(f"詳細錯誤: {traceback.format_exc()}")
                 self._trigger_callback('on_error', {
                     'error_type': 'feature_calculation_error',
                     'message': str(e),
@@ -500,6 +514,7 @@ class InkProcessingSystem:
                 })
 
         self.logger.info("Feature calculation loop ended")
+
 
     def _status_monitoring_loop(self):
         """狀態監控主循環"""
@@ -545,7 +560,7 @@ class InkProcessingSystem:
 
         self.logger.info("Stopping processing pipeline...")
 
-        # ✅✅✅ 新增：在停止前完成未完成的筆劃
+        # ✅✅✅ 修復：在停止前完成未完成的筆劃
         try:
             if (hasattr(self, 'stroke_detector') and 
                 self.stroke_detector is not None and
@@ -560,16 +575,34 @@ class InkProcessingSystem:
                 completed_strokes = self.stroke_detector.get_completed_strokes()
                 if completed_strokes:
                     self.logger.info(f"✅ 完成了 {len(completed_strokes)} 個筆劃")
-                    # ✅ 修正：使用正確的回調格式
+                    
+                    # ✅✅✅ 關鍵修復：使用正確的數據格式
                     for stroke_data in completed_strokes:
+                        # 加入筆劃緩衝區
+                        self.stroke_buffer.append(stroke_data)
+                        self.processing_stats['total_strokes'] += 1
+                        
+                        # ✅ 提取數據
+                        stroke_points = stroke_data['points']
+                        stroke_id = stroke_data['stroke_id']
+                        
+                        # ✅ 調用回調時傳遞正確格式
                         self._trigger_callback('on_stroke_completed', {
-                            'stroke': stroke_data,
+                            'stroke_id': stroke_id,
+                            'points': stroke_points,
+                            'num_points': len(stroke_points),
+                            'start_time': stroke_data['start_time'],
+                            'end_time': stroke_data['end_time'],
                             'timestamp': time.time()
                         })
+                else:
+                    self.logger.debug("沒有完成的筆劃")
             else:
                 self.logger.debug("沒有未完成的筆劃需要處理")
         except Exception as e:
             self.logger.error(f"完成未完成筆劃時發生錯誤: {str(e)}")
+            import traceback
+            self.logger.error(f"詳細錯誤: {traceback.format_exc()}")
 
         # 設置停止標誌
         self.is_processing = False
@@ -592,6 +625,7 @@ class InkProcessingSystem:
         })
 
         self.logger.info("Processing pipeline stopped")
+
 
 
     def shutdown(self):

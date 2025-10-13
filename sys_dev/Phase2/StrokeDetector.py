@@ -41,7 +41,7 @@ class StrokeDetector:
         
         # 檢測閾值 (可調整)
         self.detection_thresholds = {
-            'min_stroke_duration': 0.05,      # 最小筆劃持續時間 (秒)
+            'min_stroke_duration': 0.02,      # 最小筆劃持續時間 (秒)
             'max_stroke_duration': 30.0,      # 最大筆劃持續時間 (秒)
             'min_points_per_stroke': 3,       # 最小點數
             'max_point_gap': 0.2,             # 最大點間時間間隔
@@ -165,6 +165,7 @@ class StrokeDetector:
         except Exception as e:
             self.logger.error(f"關閉筆劃檢測器失敗: {str(e)}")
 
+
     def add_point(self, point: ProcessedInkPoint) -> None:
         """
         添加點到檢測器並進行實時筆劃檢測
@@ -173,13 +174,17 @@ class StrokeDetector:
             point: 要添加的處理後點
         """
         try:
-            # ✅✅✅ 新增：防止重複處理 COMPLETED 狀態
+            # ✅✅✅ 診斷日誌（可選，調試完成後可以移除）
+            self.logger.debug(f"🔍 add_point: state={self.current_state}, "
+                            f"stroke_id={self.current_stroke_id}, "
+                            f"points={len(self.current_stroke_points)}, "
+                            f"pressure={point.pressure:.3f}")
+            
+            # ✅ 防止重複處理 COMPLETED 狀態
             if self.current_state == StrokeState.COMPLETED:
                 self.logger.debug("⚠️ 當前筆劃已完成，重置為 IDLE 狀態")
                 self.current_state = StrokeState.IDLE
                 self.current_stroke_points = []
-                # 不需要增加 stroke_id，因為下一個點會觸發 STARTING 狀態
-            # ✅✅✅ 新增結束
             
             # 更新檢測歷史
             self._update_detection_history(point)
@@ -191,19 +196,31 @@ class StrokeDetector:
                 current_state=self.current_state
             )
             
-            # ✅ 處理狀態轉換
+            # ✅✅✅ 關鍵修復：根據狀態轉換正確處理點
             if new_state == StrokeState.STARTING:
-                # 開始新筆劃
-                self.current_stroke_points = [point]
+                # 🎨 開始新筆劃
+                self.current_stroke_points = [point]  # ✅ 立即添加第一個點
                 self.logger.info(f"🎨 筆劃開始: stroke_id={self.current_stroke_id}")
             
             elif new_state == StrokeState.ACTIVE:
-                # 添加點到當前筆劃
-                self.current_stroke_points.append(point)
+                # ✅✅✅ 修復：無論從哪個狀態轉換來，都要添加當前點
+                if self.current_state == StrokeState.STARTING:
+                    # 從 STARTING 轉換到 ACTIVE
+                    self.current_stroke_points.append(point)  # ✅ 添加當前點
+                    self.logger.debug(f"✅ 筆劃轉為 ACTIVE: stroke_id={self.current_stroke_id}, "
+                                    f"points={len(self.current_stroke_points)}")
+                elif self.current_state == StrokeState.ACTIVE:
+                    # 保持 ACTIVE 狀態
+                    self.current_stroke_points.append(point)
+                else:
+                    # 從其他狀態轉換到 ACTIVE（不太可能，但為了安全）
+                    self.logger.warning(f"⚠️ 從 {self.current_state} 轉換到 ACTIVE")
+                    self.current_stroke_points.append(point)
             
             elif new_state == StrokeState.ENDING:
                 # 筆劃結束中
                 self.current_stroke_points.append(point)
+                self.logger.debug(f"🔚 筆劃進入 ENDING 狀態: stroke_id={self.current_stroke_id}")
             
             elif new_state == StrokeState.COMPLETED:
                 # 筆劃完成
@@ -213,30 +230,37 @@ class StrokeDetector:
                         # 將完成的筆劃加入緩衝區
                         self.completed_strokes.append({
                             'stroke_id': self.current_stroke_id,
-                            'points': self.current_stroke_points.copy(),
+                            'points': self.current_stroke_points.copy(),  # ✅ 複製點列表
                             'start_time': self.current_stroke_points[0].timestamp,
                             'end_time': self.current_stroke_points[-1].timestamp,
                             'num_points': len(self.current_stroke_points)
                         })
                         self.logger.info(f"✅ 筆劃完成: stroke_id={self.current_stroke_id}, "
-                                    f"points={len(self.current_stroke_points)}")
+                                        f"points={len(self.current_stroke_points)}")
+                        self.detection_stats['strokes_validated'] += 1
                     else:
-                        self.logger.warning(f"❌ 筆劃驗證失敗: stroke_id={self.current_stroke_id}")
+                        self.logger.warning(f"❌ 筆劃驗證失敗: stroke_id={self.current_stroke_id}, "
+                                        f"points={len(self.current_stroke_points)}")
+                        self.detection_stats['strokes_rejected'] += 1
                     
-                    # 重置當前筆劃
+                    # ✅ 重置當前筆劃（為下一個筆劃做準備）
                     self.current_stroke_points = []
+                else:
+                    self.logger.warning(f"⚠️ COMPLETED 狀態但沒有點: stroke_id={self.current_stroke_id}")
             
             elif new_state == StrokeState.IDLE:
                 # 空閒狀態
                 if self.current_stroke_points:
                     # 如果有未完成的筆劃，清空
+                    self.logger.debug(f"⚠️ 轉為 IDLE 狀態，清空 {len(self.current_stroke_points)} 個點")
                     self.current_stroke_points = []
             
-            # 更新狀態
+            # ✅ 更新狀態
             self.current_state = new_state
             
         except Exception as e:
-            self.logger.error(f"添加點失敗: {str(e)}")
+            self.logger.error(f"添加點失敗: {str(e)}", exc_info=True)
+
 
 
     def get_completed_strokes(self) -> List[Dict[str, Any]]:
@@ -568,15 +592,15 @@ class StrokeDetector:
                 self.logger.warning(f"❌ 筆劃驗證失敗: stroke_id={stroke_id}, points={num_points}")
                 self.detection_stats['strokes_rejected'] += 1
             
-            # ✅ 重置狀態
+            # ✅✅✅ 修復：重置狀態並清空點列表
             self.current_stroke_points = []
-            self.current_state = StrokeState.COMPLETED  # 設置為 COMPLETED 而不是 IDLE
+            self.current_state = StrokeState.COMPLETED
             
-            # ✅ 增加 stroke_id，準備下一筆劃
-            # 注意：不在這裡增加，而是在檢測到新筆劃開始時增加
+            # ✅ 不在這裡增加 stroke_id，而是在檢測到新筆劃開始時增加
             
         except Exception as e:
-            self.logger.error(f"強制完成筆劃失敗: {str(e)}")
+            self.logger.error(f"強制完成筆劃失敗: {str(e)}", exc_info=True)
+
 
 
     def validate_stroke(self, points: List[ProcessedInkPoint]) -> bool:
@@ -633,15 +657,23 @@ class StrokeDetector:
             
             self.logger.info(f"✅ 持續時間檢查通過: {duration:.3f}s ({min_duration}s ~ {max_duration}s)")
             
-            # 檢查點間時間間隔
+            # ✅✅✅ 修復：檢查點間時間間隔，但允許暫停
             max_gap = self.detection_thresholds['max_point_gap']
+            pause_detected = False
+            
             for i in range(1, len(points)):
                 time_gap = points[i].timestamp - points[i-1].timestamp
                 if time_gap > max_gap:
-                    self.logger.warning(f"❌ 檢測到異常時間間隔: {time_gap:.3f}s > {max_gap}s (點 {i-1} -> {i})")
-                    self.detection_stats['strokes_rejected'] += 1
-                    return False
-            self.logger.info(f"✅ 時間間隔檢查通過: 所有間隔 <= {max_gap}s")
+                    # ✅ 記錄暫停，但不拒絕筆劃
+                    self.logger.warning(f"⚠️ 檢測到暫停: {time_gap:.3f}s > {max_gap}s (點 {i-1} -> {i})")
+                    pause_detected = True
+                    # ❌ 不再直接返回 False
+                    # return False
+            
+            if pause_detected:
+                self.logger.info(f"⚠️ 筆劃包含暫停，但仍然有效")
+            else:
+                self.logger.info(f"✅ 時間間隔檢查通過: 所有間隔 <= {max_gap}s")
             
             # 檢查異常跳躍
             if not self._check_spatial_continuity(points):
@@ -659,6 +691,7 @@ class StrokeDetector:
             self.logger.error(f"❌ 驗證筆劃時發生異常: {str(e)}")
             self.detection_stats['strokes_rejected'] += 1
             return False
+
 
 
     def split_stroke(self, points: List[ProcessedInkPoint],
@@ -865,29 +898,74 @@ class StrokeDetector:
         return math.sqrt(dx * dx + dy * dy)
 
     def _calculate_total_length(self, points: List[ProcessedInkPoint]) -> float:
-        """計算筆劃總長度"""
+        """
+        計算筆劃總長度（像素單位）
+        
+        Args:
+            points: 筆劃的所有點
+            
+        Returns:
+            float: 總長度（像素單位）
+        """
         if len(points) < 2:
             return 0.0
         
+        # ✅ 獲取畫布尺寸（用於反歸一化）
+        # 方法 1：從配置中獲取
+        canvas_width = getattr(self.config, 'canvas_width', 800)
+        canvas_height = getattr(self.config, 'canvas_height', 600)
+        
+        # 或者方法 2：如果沒有配置，使用固定值
+        # canvas_width = 800
+        # canvas_height = 600
+        
         total_length = 0.0
         for i in range(1, len(points)):
-            total_length += self._calculate_distance(points[i], points[i-1])
+            # ✅ 將歸一化座標轉換為像素座標
+            x1 = points[i-1].x * canvas_width
+            y1 = points[i-1].y * canvas_height
+            x2 = points[i].x * canvas_width
+            y2 = points[i].y * canvas_height
+            
+            # ✅ 計算像素距離
+            dx = x2 - x1
+            dy = y2 - y1
+            segment_length = math.sqrt(dx * dx + dy * dy)
+            total_length += segment_length
         
         return total_length
 
+
     def _check_spatial_continuity(self, points: List[ProcessedInkPoint]) -> bool:
-        """檢查空間連續性"""
+        """檢查空間連續性（像素單位）"""
         if len(points) < 2:
             return True
         
-        max_allowed_jump = 0.05  # 最大允許跳躍距離
+        # ✅ 獲取畫布尺寸
+        canvas_width = getattr(self.config, 'canvas_width', 800)
+        canvas_height = getattr(self.config, 'canvas_height', 600)
+        
+        # ✅✅✅ 修復：放寬跳躍閾值到 200 像素（適應快速繪製）
+        max_allowed_jump = 200.0  # 從 50.0 改為 200.0
         
         for i in range(1, len(points)):
-            distance = self._calculate_distance(points[i], points[i-1])
+            # ✅ 轉換為像素座標
+            x1 = points[i-1].x * canvas_width
+            y1 = points[i-1].y * canvas_height
+            x2 = points[i].x * canvas_width
+            y2 = points[i].y * canvas_height
+            
+            # ✅ 計算像素距離
+            dx = x2 - x1
+            dy = y2 - y1
+            distance = math.sqrt(dx * dx + dy * dy)
+            
             if distance > max_allowed_jump:
+                self.logger.warning(f"檢測到異常跳躍: {distance:.1f} 像素")
                 return False
         
         return True
+
 
     def _find_pause_split_points(self, points: List[ProcessedInkPoint]) -> List[int]:
         """找到基於暫停的分割點"""

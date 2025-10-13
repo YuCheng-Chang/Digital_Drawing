@@ -10,9 +10,10 @@ from InkProcessingSystemMainController import InkProcessingSystem
 from Config import ProcessingConfig
 
 class WacomDrawingCanvas(QWidget):
-    def __init__(self, ink_system):
+    def __init__(self, ink_system, config: ProcessingConfig):  # ✅ 添加 config 參數
         super().__init__()
         self.ink_system = ink_system
+        self.config = config  # ✅ 保存配置引用
         
         # ✅ 添加缺失的屬性初始化
         self.current_stroke_points = []
@@ -21,9 +22,13 @@ class WacomDrawingCanvas(QWidget):
         self.total_points = 0
         self.logger = logging.getLogger('WacomDrawingCanvas')
         
+        # ✅ 從配置讀取畫布大小
+        canvas_width = config.canvas_width
+        canvas_height = config.canvas_height
+        
         # 設置視窗
         self.setWindowTitle("Wacom 繪圖測試")
-        self.setGeometry(100, 100, 800, 600)
+        self.setGeometry(100, 100, canvas_width, canvas_height)  # ✅ 使用配置的尺寸
         self.setMouseTracking(True)
         
         # ===== LSL 整合 =====
@@ -33,8 +38,8 @@ class WacomDrawingCanvas(QWidget):
             device_manufacturer="Wacom",
             device_model="Wacom One 12",
             normalize_coordinates=True,
-            screen_width=self.width(),
-            screen_height=self.height()
+            screen_width=canvas_width,   # ✅ 使用配置的寬度
+            screen_height=canvas_height  # ✅ 使用配置的高度
         )
         
         self.lsl = LSLIntegration(
@@ -47,7 +52,9 @@ class WacomDrawingCanvas(QWidget):
             session_id=f"wacom_test_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
             metadata={
                 'experiment': 'wacom_drawing_test',
-                'screen_resolution': f"{self.width()}x{self.height()}"
+                'screen_resolution': f"{canvas_width}x{canvas_height}",  # ✅ 使用配置的尺寸
+                'canvas_width': canvas_width,    # ✅ 記錄到元數據
+                'canvas_height': canvas_height   # ✅ 記錄到元數據
             }
         )
         
@@ -166,13 +173,17 @@ def test_wacom_with_full_system():
     print("🎨 Wacom 墨水處理系統完整測試")
     print("=" * 60)
     
-    # 創建配置
+    # ✅ 創建配置（可以自定義畫布大小）
     config = ProcessingConfig(
         device_type="wacom",
         target_sampling_rate=200,
         smoothing_enabled=True,
-        feature_types=['basic', 'kinematic', 'pressure']
+        feature_types=['basic', 'kinematic', 'pressure'],
+        canvas_width=800,   # ✅ 明確指定畫布寬度
+        canvas_height=600   # ✅ 明確指定畫布高度
     )
+    
+    print(f"\n📐 畫布配置: {config.canvas_width} x {config.canvas_height}")
     
     # 創建墨水處理系統
     ink_system = InkProcessingSystem(config)
@@ -192,35 +203,75 @@ def test_wacom_with_full_system():
     print("✅ 系統初始化成功")
     
     # 註冊回調函數
+
     def on_stroke_completed(data):
-        stroke = data['stroke']
-        print(f"\n✓ 筆劃完成:")
-        print(f"  - 點數: {len(stroke.points)}")
-        print(f"  - 持續時間: {stroke.duration:.3f} 秒")
-        if hasattr(stroke, 'pressure_stats'):
-            print(f"  - 平均壓力: {stroke.pressure_stats.get('mean', 0):.3f}")
-    
+        """筆劃完成回調"""
+        try:
+            # ✅ 從字典中提取數據
+            stroke_id = data.get('stroke_id', 'N/A')
+            points = data.get('points', [])
+            num_points = data.get('num_points', len(points))
+            
+            print(f"\n✅ 筆劃完成:")
+            print(f"   - ID: {stroke_id}")
+            print(f"   - 點數: {num_points}")
+            
+            # 計算持續時間
+            if points and len(points) >= 2:
+                duration = points[-1].timestamp - points[0].timestamp
+                print(f"   - 持續時間: {duration:.3f}s")
+                
+                # ✅ 計算像素長度（使用配置的畫布尺寸）
+                canvas_width = config.canvas_width
+                canvas_height = config.canvas_height
+                
+                total_length = 0
+                for i in range(1, len(points)):
+                    p1 = points[i-1]
+                    p2 = points[i]
+                    
+                    # ✅ 轉換為像素座標
+                    x1 = p1.x * canvas_width
+                    y1 = p1.y * canvas_height
+                    x2 = p2.x * canvas_width
+                    y2 = p2.y * canvas_height
+                    
+                    # ✅ 計算像素距離
+                    dx = x2 - x1
+                    dy = y2 - y1
+                    total_length += (dx**2 + dy**2)**0.5
+                
+                print(f"   - 總長度: {total_length:.2f} 像素")
+        
+        except Exception as e:
+            print(f"❌ 處理筆劃完成回調時出錯: {e}")
+            import traceback
+            print(traceback.format_exc())
+
     def on_features_calculated(data):
-        features = data['features']
-        print(f"\n✓ 特徵計算完成:")
+        """特徵計算完成回調"""
+        try:
+            stroke_id = data.get('stroke_id', 'N/A')
+            features = data.get('features', {})
+            
+            print(f"\n📊 特徵計算完成:")
+            print(f"   - 筆劃 ID: {stroke_id}")
+            
+            # 顯示基本統計
+            if 'basic_statistics' in features:
+                basic = features['basic_statistics']
+                print(f"   - 點數: {basic.get('point_count', 'N/A')}")
+                
+                # ✅ 顯示像素長度
+                total_length = basic.get('total_length', 0)
+                print(f"   - 總長度: {total_length:.2f} 像素")
+                print(f"   - 持續時間: {basic.get('duration', 'N/A'):.3f}s")
         
-        if 'basic' in features:
-            basic = features['basic']
-            print(f"  [基本特徵]")
-            print(f"    長度: {basic.get('length', 0):.2f} px")
-            print(f"    速度: {basic.get('avg_velocity', 0):.2f} px/s")
-        
-        if 'kinematic' in features:
-            kinematic = features['kinematic']
-            print(f"  [運動學特徵]")
-            print(f"    加速度: {kinematic.get('avg_acceleration', 0):.2f}")
-            print(f"    急動度: {kinematic.get('avg_jerk', 0):.2f}")
-        
-        if 'pressure' in features:
-            pressure = features['pressure']
-            print(f"  [壓力特徵]")
-            print(f"    平均壓力: {pressure.get('mean_pressure', 0):.3f}")
-            print(f"    壓力變化: {pressure.get('pressure_variation', 0):.3f}")
+        except Exception as e:
+            print(f"❌ 處理特徵計算回調時出錯: {e}")
+            import traceback
+            print(traceback.format_exc())
+
     
     def on_error(data):
         print(f"\n❌ 錯誤: {data['error_type']}")
@@ -232,16 +283,16 @@ def test_wacom_with_full_system():
     
     # 啟動處理（使用外部輸入模式）
     print("\n🚀 啟動數據處理...")
-    if not ink_system.start_processing(use_external_input=True):  # ✅ 添加參數
+    if not ink_system.start_processing(use_external_input=True):
         print("❌ 無法啟動處理")
         return
 
     print("✅ 處理已啟動（外部輸入模式）")
 
     
-    # 創建 GUI
+    # ✅ 創建 GUI（傳入 config）
     app = QApplication(sys.argv)
-    canvas = WacomDrawingCanvas(ink_system)
+    canvas = WacomDrawingCanvas(ink_system, config)  # ✅ 傳入 config
     canvas.show()
     
     print("\n" + "=" * 60)
