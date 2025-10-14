@@ -1,3 +1,4 @@
+# ===== LSLIntegration.py =====
 """
 LSL Integration Module
 
@@ -19,15 +20,9 @@ class LSLIntegration:
     """
     
     def __init__(self, 
-                 stream_config: Optional[LSLStreamConfig] = None,
-                 output_dir: str = "./lsl_recordings"):
-        """
-        初始化 LSL 整合模組
-        
-        Args:
-            stream_config: LSL 串流配置（如果為 None，使用預設配置）
-            output_dir: 數據輸出目錄
-        """
+                stream_config: Optional[LSLStreamConfig] = None,
+                output_dir: str = "./lsl_recordings"):
+        """初始化 LSL 整合模組"""
         self.logger = logging.getLogger('LSLIntegration')
         
         # 使用預設配置或自訂配置
@@ -42,6 +37,7 @@ class LSLIntegration:
         self.is_active = False
         self.current_stroke_id = 0
         self.current_session_id = None
+        self._stroke_has_started = False  # 🆕 追蹤當前筆劃是否已開始
     
     def start(self, session_id: Optional[str] = None, metadata: Optional[Dict] = None) -> bool:
         """
@@ -72,6 +68,7 @@ class LSLIntegration:
             
             self.is_active = True
             self.current_stroke_id = 0
+            self._stroke_has_started = False
             
             self.logger.info(f"LSL integration started: session_id={self.current_session_id}")
             return True
@@ -81,31 +78,15 @@ class LSLIntegration:
             return False
     
     def process_ink_point(self,
-                         x: float,
-                         y: float,
-                         pressure: float,
-                         tilt_x: float = 0.0,
-                         tilt_y: float = 0.0,
-                         velocity: float = 0.0,
-                         is_stroke_start: bool = False,
-                         is_stroke_end: bool = False):
-        """
-        處理墨水點數據
-        
-        自動處理：
-        - 事件類型判斷
-        - 筆劃 ID 管理
-        - 事件標記推送
-        - 雙重記錄（串流 + 本地）
-        
-        Args:
-            x, y: 座標
-            pressure: 壓力
-            tilt_x, tilt_y: 傾斜角度
-            velocity: 速度
-            is_stroke_start: 是否為筆劃開始
-            is_stroke_end: 是否為筆劃結束
-        """
+                        x: float,
+                        y: float,
+                        pressure: float,
+                        tilt_x: float = 0.0,
+                        tilt_y: float = 0.0,
+                        velocity: float = 0.0,
+                        is_stroke_start: bool = False,
+                        is_stroke_end: bool = False):
+        """處理墨水點數據"""
         if not self.is_active:
             return
         
@@ -117,22 +98,33 @@ class LSLIntegration:
             event_type = 0  # 正常點
             
             if is_stroke_start:
-                self.current_stroke_id += 1
                 event_type = 1
-                # 推送筆劃開始標記
+                # 🆕 記錄這是一個有效的筆劃開始
+                self._stroke_has_started = True
+                
                 marker = f"stroke_start_{self.current_stroke_id}"
                 self.stream_manager.push_marker(marker, timestamp)
                 self.data_recorder.record_marker(timestamp, marker)
                 self.logger.debug(f"Stroke started: {self.current_stroke_id}")
                 
             elif is_stroke_end:
+                # 🗑️ 檢查是否為無效的結束事件（沒有對應的開始）
+                if not self._stroke_has_started:
+                    self.logger.info(
+                        f"🗑️ 跳過無效的筆劃結束事件: stroke_id={self.current_stroke_id}, "
+                        f"沒有對應的筆劃開始"
+                    )
+                    return  # ✅ 直接返回，不記錄這個點
+                
                 event_type = 2
+                
                 # 推送筆劃結束標記
                 marker = f"stroke_end_{self.current_stroke_id}"
                 self.stream_manager.push_marker(marker, timestamp)
                 self.data_recorder.record_marker(timestamp, marker)
                 self.logger.debug(f"Stroke ended: {self.current_stroke_id}")
             
+            # ✅✅✅ 關鍵修改：先推送數據，再遞增 ID
             # 推送墨水數據到串流
             self.stream_manager.push_ink_sample(
                 x=x,
@@ -141,7 +133,7 @@ class LSLIntegration:
                 tilt_x=tilt_x,
                 tilt_y=tilt_y,
                 velocity=velocity,
-                stroke_id=self.current_stroke_id,
+                stroke_id=self.current_stroke_id,  # ← 使用當前 ID
                 event_type=event_type,
                 timestamp=timestamp
             )
@@ -155,12 +147,19 @@ class LSLIntegration:
                 tilt_x=tilt_x,
                 tilt_y=tilt_y,
                 velocity=velocity,
-                stroke_id=self.current_stroke_id,
+                stroke_id=self.current_stroke_id,  # ← 使用當前 ID
                 event_type=event_type
             )
             
+            # ✅✅✅ 關鍵修改：在推送完數據後才遞增 ID
+            if is_stroke_end:
+                self._stroke_has_started = False
+                self.current_stroke_id += 1  # ← 移到這裡
+            
         except Exception as e:
             self.logger.error(f"Error processing ink point: {e}")
+
+
     
     def mark_experiment_phase(self, phase_name: str):
         """
@@ -298,6 +297,7 @@ class LSLIntegration:
             self.is_active = False
             self.current_stroke_id = 0
             self.current_session_id = None
+            self._stroke_has_started = False  # ✅ 重置標記
             
             self.logger.info(f"LSL integration stopped. Files saved: {len(saved_files)}")
             return saved_files

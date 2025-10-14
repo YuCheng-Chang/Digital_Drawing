@@ -212,18 +212,28 @@ class InkProcessingSystem:
                 button_state=point_data.get('button_state', 0)
             )
             
-            # 處理壓力為 0 的情況
+            # ✅✅✅ 處理壓力為 0 的情況（筆劃結束）
             if raw_point.pressure == 0.0:
                 if self.stroke_detector.current_state in [StrokeState.ACTIVE, StrokeState.STARTING, StrokeState.ENDING]:
-                    self.logger.info(f"🔚 檢測到筆離開屏幕（壓力=0），強制完成當前筆劃 (stroke_id={self.stroke_detector.current_stroke_id})")
+                    self.logger.info(
+                        f"🔚 檢測到筆離開屏幕（壓力=0），強制完成當前筆劃 "
+                        f"(stroke_id={self.stroke_detector.current_stroke_id})"
+                    )
                     self.stroke_detector.finalize_current_stroke()
-                return False
+                
+                # ✅ 關鍵修改：不再直接 return False
+                # 結束點的處理由 _stroke_detection_loop() 中的回調完成
+                return True  # ← 改為 True，表示已處理
             
+            # ✅ 處理壓力 > 0 的點（正常流程）
             # 直接處理點
             processed_point = self.point_processor.process_point(raw_point)
             
             if processed_point is None:
-                self.logger.debug(f"點被過濾: pressure={raw_point.pressure:.3f} < threshold={self.config.pressure_threshold}")
+                self.logger.debug(
+                    f"點被過濾: pressure={raw_point.pressure:.3f} < "
+                    f"threshold={self.config.pressure_threshold}"
+                )
                 return False
             
             # 加入處理後的點緩衝區
@@ -248,6 +258,7 @@ class InkProcessingSystem:
         except Exception as e:
             self.logger.error(f"處理外部點失敗: {e}")
             return False
+
 
     def _point_processing_loop(self):
         """點處理主循環"""
@@ -311,33 +322,39 @@ class InkProcessingSystem:
 
         self.logger.info("Point processing loop ended")
 
+
     def _stroke_detection_loop(self):
         """筆劃檢測主循環"""
         self.logger.info("Stroke detection loop started")
 
         while self.is_processing and not self.stop_event.is_set():
             try:
-                # ✅✅✅ 修復：嘗試獲取新點（短超時）
+                # 嘗試獲取新點
                 point = None
                 try:
-                    point = self.processed_point_buffer.get(timeout=0.05)  # ← 縮短超時
+                    point = self.processed_point_buffer.get(timeout=0.05)
                 except queue.Empty:
-                    pass  # ← 沒有新點也繼續，不要 continue
+                    pass
                 
-                # ✅ 如果有新點，添加到檢測器
+                # 如果有新點，添加到檢測器
                 if point is not None:
-                    # 記錄處理前的狀態
+                    # ✅✅✅ 記錄處理前的狀態
                     old_stroke_id = self.stroke_detector.current_stroke_id
                     old_state = self.stroke_detector.current_state
+                    old_points_count = len(self.stroke_detector.current_stroke_points)  # ← 新增
                     
                     # 將點添加到筆劃檢測器
                     self.stroke_detector.add_point(point)
                     
-                    # 檢查是否是筆劃開始
-                    is_stroke_start = (old_state == StrokeState.IDLE and 
-                                    self.stroke_detector.current_state in [StrokeState.STARTING, StrokeState.ACTIVE])
+                    # ✅✅✅ 修改判斷邏輯：使用 current_points 來判斷
+                    # 如果處理前點數為 0，處理後點數為 1，說明這是筆劃的第一個點
+                    is_stroke_start = (old_points_count == 0 and 
+                                    len(self.stroke_detector.current_stroke_points) == 1)
                     
-                    # ✅ 觸發回調
+                    # ✅ 更新 point 的 stroke_id
+                    point.stroke_id = self.stroke_detector.current_stroke_id
+                    
+                    # ✅ 觸發回調，包含 is_stroke_start 標記
                     self._trigger_callback('on_point_processed', {
                         'x': point.x,
                         'y': point.y,
@@ -347,11 +364,11 @@ class InkProcessingSystem:
                         'velocity': point.velocity,
                         'timestamp': point.timestamp,
                         'stroke_id': point.stroke_id,
-                        'is_stroke_start': is_stroke_start,
+                        'is_stroke_start': is_stroke_start,  # ← 使用新邏輯
                         'is_stroke_end': False
                     })
 
-                # ✅✅✅ 關鍵修復：每次循環都檢查完成的筆劃（不管有沒有新點）
+                # 檢查完成的筆劃
                 completed_strokes = self.stroke_detector.get_completed_strokes()
                 
                 if completed_strokes:
@@ -363,27 +380,26 @@ class InkProcessingSystem:
                     
                     self.logger.info(f"🔍 處理完成的筆劃: stroke_id={stroke_id}, points={len(stroke_points)}")
                     
-                    # ✅ 為筆劃的最後一個點觸發 stroke_end 事件
+                    # ✅✅✅ 為筆劃的最後一個點觸發 stroke_end 事件（壓力設為 0）
                     if stroke_points:
                         last_point = stroke_points[-1]
                         self._trigger_callback('on_point_processed', {
                             'x': last_point.x,
                             'y': last_point.y,
-                            'pressure': last_point.pressure,
+                            'pressure': 0.0,  # ✅ 關鍵修改：壓力設為 0
                             'tilt_x': last_point.tilt_x,
                             'tilt_y': last_point.tilt_y,
                             'velocity': last_point.velocity,
                             'timestamp': last_point.timestamp,
-                            'stroke_id': stroke_id,
+                            'stroke_id': stroke_id,  # ✅ 使用正確的 stroke_id
                             'is_stroke_start': False,
-                            'is_stroke_end': True
+                            'is_stroke_end': True  # ✅ 筆劃結束標記
                         })
+
                     
                     # 加入筆劃緩衝區
                     self.stroke_buffer.append(stroke_data)
-                    self.logger.info(f"🔍 將 stroke_id={stroke_id} 加入 stroke_buffer，當前總數: {len(self.stroke_buffer)}")
                     self.processing_stats['total_strokes'] += 1
-                    self.logger.info(f"✅ 統計更新完成，當前總筆劃數: {self.processing_stats['total_strokes']}")
 
                     # 觸發筆劃完成回調
                     self._trigger_callback('on_stroke_completed', {
@@ -395,7 +411,7 @@ class InkProcessingSystem:
                         'timestamp': time.time()
                     })
                 
-                # ✅ 如果沒有新點也沒有完成的筆劃，短暫休眠避免 CPU 空轉
+                # 如果沒有新點也沒有完成的筆劃，短暫休眠
                 if point is None and not completed_strokes:
                     time.sleep(0.01)
 

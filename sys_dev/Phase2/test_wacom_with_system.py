@@ -95,25 +95,51 @@ class WacomDrawingCanvas(QWidget):
         try:
             self.logger.info("🔚 Canvas closing...")
             
+            # ✅✅✅ 1. 處理未完成的筆劃（加強檢查）
             from StrokeDetector import StrokeState
             
-            # ✅✅✅ 修復 1：檢查是否有未完成的筆劃
-            if (hasattr(self.ink_system, 'stroke_detector') and 
-                self.ink_system.stroke_detector.current_state in [StrokeState.ACTIVE, StrokeState.STARTING]):
-                
-                self.logger.info("🔚 關閉視窗前強制完成當前筆劃")
-                
-                if self.last_point_data is not None:
-                    final_point = self.last_point_data.copy()
-                    final_point['pressure'] = 0.0
-                    final_point['timestamp'] = time.time()
-                    
-                    self.ink_system.process_raw_point(final_point)
-                    
-                    # 等待處理完成
-                    time.sleep(0.1)
+            # 檢查條件（新增更嚴格的檢查）
+            is_stroke_active = (
+                hasattr(self.ink_system, 'stroke_detector') and 
+                self.ink_system.stroke_detector.current_state in [StrokeState.ACTIVE, StrokeState.STARTING]
+            )
             
-            # ✅✅✅ 修復 2：強制檢查已完成但未處理的筆劃
+            has_unfinished_stroke = (
+                self.current_stroke_points and  # 有未完成的點
+                self.last_point_data is not None and  # 有最後點數據
+                self.pen_is_touching and  # 筆還在接觸屏幕
+                self.current_pressure > 0  # 壓力 > 0
+            )
+            
+            if is_stroke_active and has_unfinished_stroke:
+                self.logger.info("🔚 關閉視窗前強制完成當前筆劃")
+                self.logger.info(f"   - 當前筆劃點數: {len(self.current_stroke_points)}")
+                self.logger.info(f"   - 當前壓力: {self.current_pressure:.3f}")
+                
+                # 發送壓力為 0 的終點
+                final_point = self.last_point_data.copy()
+                final_point['pressure'] = 0.0
+                final_point['timestamp'] = time.time()
+                
+                self.ink_system.process_raw_point(final_point)
+                time.sleep(0.1)
+            else:
+                # ✅ 記錄跳過的原因
+                reasons = []
+                if not is_stroke_active:
+                    reasons.append("系統無活動筆劃")
+                if not self.current_stroke_points:
+                    reasons.append("沒有未完成的點")
+                if self.last_point_data is None:
+                    reasons.append("無最後點數據")
+                if not self.pen_is_touching:
+                    reasons.append("筆未接觸屏幕")
+                if self.current_pressure <= 0:
+                    reasons.append("壓力為0")
+                
+                self.logger.info(f"🔚 跳過強制完成筆劃: {', '.join(reasons)}")
+            
+            # 2. 處理已完成但未處理的筆劃
             if hasattr(self.ink_system, 'stroke_detector'):
                 completed_strokes = self.ink_system.stroke_detector.get_completed_strokes()
                 
@@ -124,13 +150,9 @@ class WacomDrawingCanvas(QWidget):
                         stroke_id = stroke_data['stroke_id']
                         stroke_points = stroke_data['points']
                         
-                        self.logger.info(f"🔍 手動處理筆劃: stroke_id={stroke_id}, points={len(stroke_points)}")
-                        
-                        # 加入筆劃緩衝區
                         self.ink_system.stroke_buffer.append(stroke_data)
                         self.ink_system.processing_stats['total_strokes'] += 1
                         
-                        # 觸發回調
                         self.ink_system._trigger_callback('on_stroke_completed', {
                             'stroke_id': stroke_id,
                             'points': stroke_points,
@@ -140,20 +162,21 @@ class WacomDrawingCanvas(QWidget):
                             'timestamp': time.time()
                         })
                     
-                    # 等待特徵計算完成
-                    max_wait = 2.0
-                    start_time = time.time()
-                    
-                    while time.time() - start_time < max_wait:
-                        if len(self.ink_system.stroke_buffer) == 0:
-                            self.logger.info("✅ stroke_buffer 已清空")
-                            break
-                        time.sleep(0.05)
-                    
                     time.sleep(0.2)
                     self.logger.info("✅ 特徵計算處理完成")
             
-            # 停止系統
+            # 3. 停止 LSL 並儲存數據
+            if hasattr(self, 'lsl') and self.lsl is not None:
+                self.logger.info("🔚 Stopping LSL and saving data...")
+                try:
+                    saved_files = self.lsl.stop()
+                    self.logger.info(f"✅ LSL data saved:")
+                    for key, path in saved_files.items():
+                        self.logger.info(f"   - {key}: {path}")
+                except Exception as e:
+                    self.logger.error(f"❌ Error stopping LSL: {e}")
+            
+            # 4. 停止墨水處理系統
             if self.ink_system:
                 self.logger.info("Stopping ink processing system...")
                 self.ink_system.stop_processing()
@@ -168,6 +191,8 @@ class WacomDrawingCanvas(QWidget):
             import traceback
             self.logger.error(traceback.format_exc())
             event.accept()
+
+
 
 
     def enterEvent(self, event):
@@ -210,9 +235,20 @@ class WacomDrawingCanvas(QWidget):
             # 更新狀態
             self.pen_is_in_canvas = False
             
-            # ✅✅✅ 關鍵檢查：同時考慮位置和壓力
-            # 只有在「筆接觸屏幕」且「有未完成筆劃」時才結束
-            if self.pen_is_touching and self.current_pressure > 0 and self.current_stroke_points:
+            # ✅✅✅ 關鍵檢查：同時考慮位置、壓力和狀態
+            # 新增檢查：確保 stroke_detector 的狀態也是 ACTIVE
+            from StrokeDetector import StrokeState
+            
+            is_stroke_active = (
+                hasattr(self.ink_system, 'stroke_detector') and
+                self.ink_system.stroke_detector.current_state in [StrokeState.ACTIVE, StrokeState.STARTING]
+            )
+            
+            if (self.pen_is_touching and 
+                self.current_pressure > 0 and 
+                self.current_stroke_points and
+                is_stroke_active):  # ← 新增：檢查系統狀態
+                
                 self.logger.info("🔚 筆接觸屏幕時移出畫布，使用最後一個點作為筆劃終點")
                 
                 if self.last_point_data is not None:
@@ -233,9 +269,9 @@ class WacomDrawingCanvas(QWidget):
                     self.current_stroke_points = []
                     self.stroke_count += 1
                     
-                    # 重置狀態
+                    # ✅✅✅ 重置所有狀態（關鍵修改）
                     self.pen_is_touching = False
-                    self.current_pressure = 0.0
+                    self.current_pressure = 0.0  # ← 新增：清空壓力
                     self.last_point_data = None
                     
                     self.update()
@@ -248,6 +284,8 @@ class WacomDrawingCanvas(QWidget):
                     reason.append("壓力為0")
                 if not self.current_stroke_points:
                     reason.append("沒有未完成的筆劃")
+                if not is_stroke_active:
+                    reason.append("系統無活動筆劃")
                 
                 self.logger.debug(f"⏭️ 跳過處理: {', '.join(reason)}")
             
@@ -257,6 +295,7 @@ class WacomDrawingCanvas(QWidget):
             self.logger.error(f"❌ leaveEvent 處理失敗: {e}")
             import traceback
             self.logger.error(traceback.format_exc())
+
 
         
     def tabletEvent(self, event):
@@ -320,7 +359,7 @@ class WacomDrawingCanvas(QWidget):
                 self.total_points += 1
             
             # ✅✅✅ 處理壓力 = 0 的情況（筆離開屏幕）
-            else:
+            else:  # pressure = 0
                 if self.pen_is_touching and self.current_stroke_points:
                     self.logger.info(
                         f"🔚 筆離開屏幕（壓力=0），筆劃結束 "
@@ -343,9 +382,11 @@ class WacomDrawingCanvas(QWidget):
                     self.current_stroke_points = []
                     self.stroke_count += 1
                     
-                    # ✅ 重置狀態
+                    # ✅✅✅ 重置所有狀態（關鍵修改）
                     self.pen_is_touching = False
+                    self.current_pressure = 0.0  # ← 新增：清空壓力
                     self.last_point_data = None
+
             
             self.update()
             event.accept()

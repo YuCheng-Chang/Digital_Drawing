@@ -1,3 +1,4 @@
+# ===== StrokeDetector.py =====
 import math
 import numpy as np
 from typing import List, Optional, Tuple, Dict, Any
@@ -65,6 +66,13 @@ class StrokeDetector:
             )
             
             if point.pressure > 0:
+                # ✅✅✅ 新增：狀態一致性檢查
+                if self.current_state == StrokeState.ACTIVE and not self.current_stroke_points:
+                    self.logger.warning(
+                        f"⚠️ 檢測到狀態不一致：ACTIVE 但沒有點，強制重置為 IDLE"
+                    )
+                    self.current_state = StrokeState.IDLE
+                
                 if self.current_state == StrokeState.IDLE:
                     # 🎨 開始新筆劃
                     self.current_state = StrokeState.ACTIVE
@@ -89,6 +97,7 @@ class StrokeDetector:
                     
                     # ✅ 完成當前筆劃
                     self.finalize_current_stroke()
+                    # ✅✅✅ 確保狀態被重置（雙重保險）
                     self.current_state = StrokeState.IDLE
                     
                     self.logger.info(f"🔚 筆劃結束: stroke_id={current_stroke_id}")
@@ -104,10 +113,27 @@ class StrokeDetector:
         try:
             if not self.current_stroke_points:
                 self.logger.warning("⚠️ 沒有點，無法完成筆劃")
+                # ✅✅✅ 確保重置狀態
+                self.current_state = StrokeState.IDLE
                 return
             
             stroke_id = self.current_stroke_id
             num_points = len(self.current_stroke_points)
+            
+            # 🗑️ 過濾無效筆劃（只有一個結束事件的幽靈筆劃）
+            if num_points == 1:
+                first_point = self.current_stroke_points[0]
+                if hasattr(first_point, 'event_type') and first_point.event_type == EventType.STROKE_END:
+                    self.logger.info(
+                        f"🗑️ 跳過無效筆劃: stroke_id={stroke_id}, "
+                        f"只有結束事件 (pressure={first_point.pressure:.3f})"
+                    )
+                    self.detection_stats['strokes_rejected'] += 1
+                    self.current_stroke_points = []
+                    # ✅✅✅ 重置狀態為 IDLE
+                    self.current_state = StrokeState.IDLE
+                    # ⚠️ 不遞增 stroke_id，因為這個筆劃根本不存在
+                    return
             
             # ✅ 驗證筆劃
             if self.validate_stroke(self.current_stroke_points):
@@ -122,7 +148,7 @@ class StrokeDetector:
                 self.logger.info(f"✅ 筆劃完成並保存: stroke_id={stroke_id}, points={num_points}")
                 self.detection_stats['strokes_validated'] += 1
                 
-                # ✅✅✅ 關鍵修復：立即遞增 stroke_id
+                # ✅ 關鍵修復：立即遞增 stroke_id
                 self.current_stroke_id += 1
                 self.logger.info(f"🔄 stroke_id 已遞增，下一筆將使用: {self.current_stroke_id}")
             else:
@@ -133,9 +159,16 @@ class StrokeDetector:
             
             # ✅ 清空當前筆劃
             self.current_stroke_points = []
+            
+            # ✅✅✅ 強制重置狀態為 IDLE
+            self.current_state = StrokeState.IDLE
+            self.logger.info(f"🔄 狀態已重置為 IDLE，下一筆將使用 stroke_id={self.current_stroke_id}")
         
         except Exception as e:
             self.logger.error(f"❌ 完成筆劃失敗: {e}", exc_info=True)
+            # ✅✅✅ 發生錯誤時也重置狀態
+            self.current_state = StrokeState.IDLE
+
 
     def get_completed_strokes(self) -> List[Dict[str, Any]]:
         """獲取已完成的筆劃並清空緩衝區"""
