@@ -161,12 +161,12 @@ class ProcessingConfig:
         if self.device_type == "wacom":
             # ✅ Wacom 設備優化參數
             self.max_point_distance = 30.0
-            self.pressure_threshold = 0.02
+            self.pressure_threshold = 0.0
             self.velocity_threshold = 5.0
             self.pause_duration_threshold = 0.3        # ✅ 0.3秒
             self.min_stroke_duration = 0.02            # ✅ 改為 0.02秒（原來是 0.05）
             self.max_stroke_duration = 30.0            # ✅ 30秒
-            self.min_stroke_length = 5.0               # ✅ 5像素
+            self.min_stroke_length = 0.1               # ✅ .1像素
             self.enable_tilt_processing = True
             self.target_sampling_rate = 200
             self.data_collection_rate = 200
@@ -375,7 +375,7 @@ class ProcessingConfig:
                 max_point_distance=30.0,
                 velocity_threshold=5.0,
                 pause_duration_threshold=0.3,      # ✅ 改為 0.3 秒（原來是 300.0）
-                pressure_threshold=0.02,
+                pressure_threshold=0.00,
                 min_stroke_duration=0.02,          # ✅ 改為 0.02 秒（降低閾值）
                 max_stroke_duration=30.0,          # ✅ 30 秒
                 min_stroke_length=5.0,             # ✅ 5 像素
