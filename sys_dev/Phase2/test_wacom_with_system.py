@@ -96,6 +96,68 @@ class WacomDrawingCanvas(QWidget):
         """筆劃完成時的處理"""
         self.logger.info(f"✅ Stroke {stroke_data['stroke_id']} completed")
     
+    def export_canvas_image(self, output_path: str):
+        """
+        將畫布匯出為 PNG 圖片
+        
+        Args:
+            output_path: 輸出檔案路徑
+        """
+        try:
+            from PyQt5.QtGui import QPixmap
+            
+            # 創建與畫布相同大小的 QPixmap
+            pixmap = QPixmap(self.size())
+            pixmap.fill(Qt.white)  # 白色背景
+            
+            # 使用 QPainter 繪製到 pixmap
+            painter = QPainter(pixmap)
+            painter.setRenderHint(QPainter.Antialiasing)
+            
+            # 繪製已完成的筆劃（黑色）
+            pen = QPen(QColor(0, 0, 0), 2)
+            painter.setPen(pen)
+            
+            for stroke in self.all_strokes:
+                for i in range(len(stroke) - 1):
+                    x1, y1, p1 = stroke[i]
+                    x2, y2, p2 = stroke[i + 1]
+                    width = 1 + p1 * 5
+                    pen.setWidthF(width)
+                    painter.setPen(pen)
+                    painter.drawLine(int(x1), int(y1), int(x2), int(y2))
+            
+            # 繪製當前筆劃（如果有）
+            if self.current_stroke_points:
+                pen = QPen(QColor(0, 100, 255), 2)
+                painter.setPen(pen)
+                
+                for i in range(len(self.current_stroke_points) - 1):
+                    x1, y1, p1 = self.current_stroke_points[i]
+                    x2, y2, p2 = self.current_stroke_points[i + 1]
+                    width = 1 + p1 * 5
+                    pen.setWidthF(width)
+                    painter.setPen(pen)
+                    painter.drawLine(int(x1), int(y1), int(x2), int(y2))
+            
+            painter.end()
+            
+            # 保存為 PNG
+            success = pixmap.save(output_path, 'PNG')
+            
+            if success:
+                self.logger.info(f"✅ 畫布已匯出: {output_path}")
+                return True
+            else:
+                self.logger.error(f"❌ 匯出失敗: {output_path}")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"❌ 匯出畫布時出錯: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
+            return False
+
     def closeEvent(self, event):
         """視窗關閉時的處理"""
         try:
@@ -171,7 +233,32 @@ class WacomDrawingCanvas(QWidget):
                     time.sleep(0.2)
                     self.logger.info("✅ 特徵計算處理完成")
             
-            # 3. 停止 LSL 並儲存數據
+            # 🆕🆕🆕 3. 匯出畫布圖片（在停止 LSL 之前）
+            if hasattr(self, 'lsl') and self.lsl is not None:
+                try:
+                    # 獲取輸出目錄
+                    import os
+                    output_dir = os.path.join(self.lsl.data_recorder.output_dir, self.lsl.data_recorder.session_id)
+                    
+                    # 確保目錄存在
+                    os.makedirs(output_dir, exist_ok=True)
+                    
+                    # 生成檔案名
+                    canvas_image_path = os.path.join(output_dir, "canvas_drawing.png")
+                    
+                    # 匯出畫布
+                    self.logger.info("🎨 匯出畫布圖片...")
+                    if self.export_canvas_image(canvas_image_path):
+                        self.logger.info(f"✅ 畫布已保存: {canvas_image_path}")
+                    else:
+                        self.logger.warning("⚠️ 畫布匯出失敗")
+                        
+                except Exception as e:
+                    self.logger.error(f"❌ 匯出畫布時出錯: {e}")
+                    import traceback
+                    self.logger.error(traceback.format_exc())
+            
+            # 4. 停止 LSL 並儲存數據
             if hasattr(self, 'lsl') and self.lsl is not None:
                 self.logger.info("🔚 Stopping LSL and saving data...")
                 try:
@@ -182,7 +269,7 @@ class WacomDrawingCanvas(QWidget):
                 except Exception as e:
                     self.logger.error(f"❌ Error stopping LSL: {e}")
             
-            # 4. 停止墨水處理系統
+            # 5. 停止墨水處理系統
             if self.ink_system:
                 self.logger.info("Stopping ink processing system...")
                 self.ink_system.stop_processing()
@@ -197,7 +284,6 @@ class WacomDrawingCanvas(QWidget):
             import traceback
             self.logger.error(traceback.format_exc())
             event.accept()
-
 
 
 

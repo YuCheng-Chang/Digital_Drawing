@@ -315,8 +315,40 @@ class LSLDataRecorder:
                 f.write(f"  Average sampling rate: {len(self.ink_samples) / (max(timestamps) - min(timestamps)):.1f} Hz\n")
                 f.write(f"  Pressure range: {min(pressures):.3f} - {max(pressures):.3f}\n")
                 f.write(f"  Average pressure: {np.mean(pressures):.3f}\n")
-                f.write(f"  Average velocity: {np.mean(velocities):.1f} px/s\n")
-                f.write(f"  Max velocity: {max(velocities):.1f} px/s\n\n")
+                
+                # 🆕🆕🆕 速度統計（過濾異常值）
+                # 只統計有效速度（排除 0 和異常高速）
+                valid_velocities = [v for v in velocities if v > 0]
+                
+                if valid_velocities:
+                    # 設定合理速度上限（5000 px/s）
+                    max_reasonable_velocity = 5000.0
+                    filtered_velocities = [v for v in valid_velocities if v <= max_reasonable_velocity]
+                    outlier_velocities = [v for v in valid_velocities if v > max_reasonable_velocity]
+                    
+                    if filtered_velocities:
+                        avg_velocity = np.mean(filtered_velocities)
+                        max_velocity = max(filtered_velocities)
+                        
+                        f.write(f"  Average velocity: {avg_velocity:.1f} px/s\n")
+                        f.write(f"  Max velocity: {max_velocity:.1f} px/s\n")
+                        
+                        # 如果有異常值，顯示統計
+                        if outlier_velocities:
+                            f.write(f"  (Filtered {len(outlier_velocities)} outlier velocities > {max_reasonable_velocity:.0f} px/s)\n")
+                            f.write(f"  (Outlier range: {min(outlier_velocities):.1f} - {max(outlier_velocities):.1f} px/s)\n")
+                    else:
+                        # 所有速度都是異常值
+                        f.write(f"  Average velocity: N/A (all velocities are outliers)\n")
+                        f.write(f"  Max velocity: N/A\n")
+                        f.write(f"  (All {len(valid_velocities)} velocities > {max_reasonable_velocity:.0f} px/s)\n")
+                else:
+                    # 沒有有效速度
+                    f.write(f"  Average velocity: 0.0 px/s\n")
+                    f.write(f"  Max velocity: 0.0 px/s\n")
+                
+                f.write("\n")
+
             
             # 列出所有標記
             if len(self.markers) > 0:
