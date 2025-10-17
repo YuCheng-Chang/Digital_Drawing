@@ -431,6 +431,10 @@ class InkProcessingSystem:
                             'is_stroke_start': False,
                             'is_stroke_end': True  # ✅ 筆劃結束標記
                         })
+                        # 🆕🆕🆕 清空 PointProcessor 的歷史緩存
+                        if hasattr(self.point_processor, 'clear_history'):
+                            self.point_processor.clear_history()
+                            self.logger.debug(f"🧹 筆劃 {stroke_id} 結束，已清空歷史緩存")
 
                     
                     # 加入筆劃緩衝區

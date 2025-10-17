@@ -11,20 +11,18 @@ class PointProcessor:
     """點處理器 - 負責處理和增強原始墨水點"""
 
     def __init__(self, config: ProcessingConfig):
-        """
-        初始化點處理器
-
-        Args:
-            config: 處理配置參數
-        """
+        """初始化點處理器"""
         self.config = config
         self.logger = logging.getLogger(__name__)
 
-        # 設備邊界 (預設值，可由設備資訊更新)
-        self.device_bounds = (0, 0, 1000, 1000)  # (min_x, min_y, max_x, max_y)
+        # 設備邊界
+        self.device_bounds = (0, 0, 1000, 1000)
 
         # 平滑濾波器設置
         self.smoothing_buffer = deque(maxlen=config.smoothing_window_size)
+
+        # 🆕🆕🆕 添加：歷史點緩存（用於計算速度）
+        self.history_buffer = deque(maxlen=10)  # 保留最近 10 個點
 
         # 品質評估參數
         self.quality_thresholds = {
@@ -141,23 +139,6 @@ class PointProcessor:
         except Exception as e:
             self.logger.error(f"關閉點處理器失敗: {str(e)}")
 
-    # def process_point(self, raw_point: RawInkPoint) -> Optional[ProcessedInkPoint]:
-    #     """
-    #     處理單個原始墨水點（兼容主控制器調用）
-        
-    #     Args:
-    #         raw_point: 原始墨水點
-            
-    #     Returns:
-    #         Optional[ProcessedInkPoint]: 處理後的墨水點
-    #     """
-    #     try:
-    #         # 使用空的前置點列表調用原有方法
-    #         return self.process_raw_point(raw_point, previous_points=[])
-            
-    #     except Exception as e:
-    #         self.logger.error(f"處理點失敗: {str(e)}")
-    #         return None
     def process_point(self, raw_point: RawInkPoint) -> Optional[ProcessedInkPoint]:
         """
         處理單個原始墨水點（兼容主控制器調用）
@@ -170,28 +151,35 @@ class PointProcessor:
         """
         try:
             # 🔍 添加調試輸出
-            self.logger.info(f"🔍 處理點: x={raw_point.x:.1f}, y={raw_point.y:.1f}, "
-                            f"pressure={raw_point.pressure:.3f}, "  # ← 移除逗號
-                            f"tiltX={raw_point.tilt_x:.3f}, "      # ← 移除逗號
-                            f"tiltY={raw_point.tilt_y:.3f}, "      # ← 移除逗號
-                            f"閾值={getattr(self.config, 'pressure_threshold', 'N/A')}")
-
+            self.logger.debug(
+                f"🔍 處理點: x={raw_point.x:.1f}, y={raw_point.y:.1f}, "
+                f"pressure={raw_point.pressure:.3f}, "
+                f"tiltX={raw_point.tilt_x:.3f}, tiltY={raw_point.tilt_y:.3f}"
+            )
             
             # 🔍 檢查壓力閾值
             if hasattr(self.config, 'pressure_threshold'):
                 if raw_point.pressure < self.config.pressure_threshold:
-                    self.logger.info(f"❌ 點被壓力閾值過濾: {raw_point.pressure:.3f} < {self.config.pressure_threshold}")
+                    self.logger.debug(
+                        f"❌ 點被壓力閾值過濾: {raw_point.pressure:.3f} < "
+                        f"{self.config.pressure_threshold}"
+                    )
                     return None
-                else:
-                    self.logger.info(f"✅ 點通過壓力檢查: {raw_point.pressure:.3f} >= {self.config.pressure_threshold}")
             
-            # 使用空的前置點列表調用原有方法
-            result = self.process_raw_point(raw_point, previous_points=[])
+            # ✅✅✅ 修復：使用歷史緩存
+            result = self.process_raw_point(raw_point, previous_points=list(self.history_buffer))
             
             if result:
-                self.logger.info(f"✅ 點處理成功")
+                # ✅✅✅ 將處理後的點加入歷史緩存
+                self.history_buffer.append(result)
+                
+                # 🔍 調試：記錄速度
+                if result.velocity > 0:
+                    self.logger.debug(f"✅ 點處理成功，速度={result.velocity:.2f} px/s")
+                else:
+                    self.logger.debug(f"✅ 點處理成功，速度=0 (第一個點或靜止)")
             else:
-                self.logger.info(f"❌ 點處理失敗")
+                self.logger.debug(f"❌ 點處理失敗")
             
             return result
             
@@ -200,6 +188,7 @@ class PointProcessor:
             import traceback
             self.logger.error(f"詳細錯誤: {traceback.format_exc()}")
             return None
+
     def process_raw_point(self, raw_point: RawInkPoint,
                          previous_points: List[ProcessedInkPoint] = None) -> ProcessedInkPoint:
         """
@@ -307,8 +296,15 @@ class PointProcessor:
 
         return (norm_x, norm_y)
 
+    def clear_history(self):
+        """
+        清空歷史點緩存（在筆劃結束時調用）
+        """
+        self.history_buffer.clear()
+        self.logger.debug("🧹 已清空歷史點緩存")
+
     def calculate_velocity(self, current_point: ProcessedInkPoint,
-                          previous_point: ProcessedInkPoint) -> float:
+                        previous_point: ProcessedInkPoint) -> float:
         """
         計算兩點間的速度
 
@@ -317,7 +313,7 @@ class PointProcessor:
             previous_point: 前一個點
 
         Returns:
-            float: 速度值 (單位/秒)
+            float: 速度值 (像素/秒)
         """
         try:
             # 計算時間差
@@ -325,12 +321,22 @@ class PointProcessor:
             if time_delta <= 0:
                 return 0.0
 
-            # 計算空間距離
-            dx = current_point.x - previous_point.x
-            dy = current_point.y - previous_point.y
+            # ✅✅✅ 修復：將歸一化座標轉換為像素座標
+            canvas_width = getattr(self.config, 'canvas_width', 800)
+            canvas_height = getattr(self.config, 'canvas_height', 600)
+            
+            # 轉換為像素座標
+            x1 = previous_point.x * canvas_width
+            y1 = previous_point.y * canvas_height
+            x2 = current_point.x * canvas_width
+            y2 = current_point.y * canvas_height
+            
+            # 計算像素距離
+            dx = x2 - x1
+            dy = y2 - y1
             distance = math.sqrt(dx * dx + dy * dy)
 
-            # 計算速度
+            # 計算速度（像素/秒）
             velocity = distance / time_delta
 
             return velocity

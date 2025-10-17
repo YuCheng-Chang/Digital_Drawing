@@ -1067,6 +1067,7 @@ class FeatureCalculator:
             return 0.0
 
 
+
     def _calculate_periodicity(self, signal_data: List[float]) -> float:
         """計算週期性"""
         try:
@@ -1090,12 +1091,16 @@ class FeatureCalculator:
             if len(autocorr) > 1:
                 peaks, _ = signal.find_peaks(autocorr[1:], height=0.3)
                 if len(peaks) > 0:
+                    # ✅✅✅ 修復：添加零檢查
+                    if autocorr[0] == 0 or np.isnan(autocorr[0]):
+                        return 0.0
                     return autocorr[peaks[0] + 1] / autocorr[0]
 
             return 0.0
 
         except Exception:
             return 0.0
+
 
 
     def _calculate_polygon_area(self, points: List[ProcessedInkPoint]) -> float:
