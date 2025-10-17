@@ -71,6 +71,41 @@ class InkProcessingSystem:
         # 設置日誌
         self._setup_logging()
 
+        # 🆕🆕🆕 時間源管理
+        self._time_source = None  # 外部時間源（如 LSL）
+        self._use_external_time = False  # 是否使用外部時間
+    def set_time_source(self, time_source_func: Optional[Callable[[], float]]):
+        """
+        設置外部時間源（如 LSL 時間）
+        
+        Args:
+            time_source_func: 返回時間戳的函數（如 lsl.stream_manager.get_stream_time）
+        """
+        if time_source_func is not None:
+            self._time_source = time_source_func
+            self._use_external_time = True
+            self.logger.info("✅ 已設置外部時間源（LSL 時間）")
+        else:
+            self._time_source = None
+            self._use_external_time = False
+            self.logger.info("⚠️ 已移除外部時間源，回退到系統時間")
+
+    def _get_timestamp(self) -> float:
+        """
+        獲取時間戳（優先使用外部時間源）
+        
+        Returns:
+            float: 時間戳
+        """
+        if self._use_external_time and self._time_source is not None:
+            try:
+                return self._time_source()
+            except Exception as e:
+                self.logger.warning(f"⚠️ 外部時間源失敗，回退到系統時間: {e}")
+                return time.time()
+        else:
+            return time.time()
+
     def _setup_logging(self):
         """設置系統日誌"""
         logging.basicConfig(
@@ -144,8 +179,9 @@ class InkProcessingSystem:
                 self.callbacks.update(callbacks)
 
             # 初始化處理開始時間
-            self.processing_stats['processing_start_time'] = time.time()
-            self.processing_stats['last_activity_time'] = time.time()
+            self.processing_stats['processing_start_time'] = self._get_timestamp()
+            self.processing_stats['last_activity_time'] = self._get_timestamp()
+
 
             # ✅ 修正：只在非外部輸入模式下啟動 RawDataCollector
             if not use_external_input:
@@ -207,7 +243,7 @@ class InkProcessingSystem:
                 tilt_x=point_data.get('tilt_x', 0),
                 tilt_y=point_data.get('tilt_y', 0),
                 twist=point_data.get('twist', 0),
-                timestamp=point_data.get('timestamp', time.time()),
+                timestamp=point_data.get('timestamp', self._get_timestamp()),
                 device_id='pyqt5_wacom',
                 button_state=point_data.get('button_state', 0)
             )
@@ -241,7 +277,7 @@ class InkProcessingSystem:
                 self.processed_point_buffer.put_nowait(processed_point)
                 self.processing_stats['total_raw_points'] += 1
                 self.processing_stats['total_processed_points'] += 1
-                self.processing_stats['last_activity_time'] = time.time()
+                self.processing_stats['last_activity_time'] = self._get_timestamp()
                 
                 return True
                 
@@ -295,7 +331,7 @@ class InkProcessingSystem:
                         try:
                             self.processed_point_buffer.put_nowait(processed_point)
                             self.processing_stats['total_processed_points'] += 1
-                            self.processing_stats['last_activity_time'] = time.time()
+                            self.processing_stats['last_activity_time'] = self._get_timestamp()
                         except queue.Full:
                             # 緩衝區滿，丟棄最舊的點
                             try:
@@ -317,7 +353,7 @@ class InkProcessingSystem:
                 self._trigger_callback('on_error', {
                     'error_type': 'point_processing_error',
                     'message': str(e),
-                    'timestamp': time.time()
+                    'timestamp': self._get_timestamp()
                 })
 
         self.logger.info("Point processing loop ended")
@@ -408,7 +444,7 @@ class InkProcessingSystem:
                         'num_points': len(stroke_points),
                         'start_time': stroke_data['start_time'],
                         'end_time': stroke_data['end_time'],
-                        'timestamp': time.time()
+                        'timestamp': self._get_timestamp()
                     })
                 
                 # 如果沒有新點也沒有完成的筆劃，短暫休眠
@@ -457,7 +493,7 @@ class InkProcessingSystem:
                     self._trigger_callback('on_features_calculated', {
                         'stroke_id': stroke_id,
                         'features': features,
-                        'timestamp': time.time()
+                        'timestamp': self._get_timestamp()
                     })
                     
                     # ✅ 更新統計
@@ -474,7 +510,7 @@ class InkProcessingSystem:
                 self._trigger_callback('on_error', {
                     'error_type': 'feature_calculation_error',
                     'message': str(e),
-                    'timestamp': time.time()
+                    'timestamp': self._get_timestamp()
                 })
 
         self.logger.info("Feature calculation loop ended")
@@ -483,11 +519,11 @@ class InkProcessingSystem:
         """狀態監控主循環"""
         self.logger.info("Status monitoring loop started")
 
-        last_report_time = time.time()
+        last_report_time = self._get_timestamp()
 
         while self.is_processing and not self.stop_event.is_set():
             try:
-                current_time = time.time()
+                current_time = self._get_timestamp()
 
                 # 每5秒報告一次狀態
                 if current_time - last_report_time >= 5.0:
@@ -561,7 +597,7 @@ class InkProcessingSystem:
         # 觸發狀態更新回調
         self._trigger_callback('on_status_update', {
             'status': 'processing_stopped',
-            'timestamp': time.time()
+            'timestamp': self._get_timestamp()
         })
 
         self.logger.info("Processing pipeline stopped")
@@ -614,7 +650,7 @@ class InkProcessingSystem:
 
     def get_processing_statistics(self) -> Dict[str, Any]:
         """獲取處理統計資訊"""
-        current_time = time.time()
+        current_time = self._get_timestamp()
         
         # 🔧 修復：安全獲取開始時間
         start_time = self.processing_stats.get('processing_start_time')

@@ -52,6 +52,7 @@ class WacomDrawingCanvas(QWidget):
             output_dir="./wacom_recordings"
         )
         
+        # ✅ 修改後（在註冊回調之前添加）
         self.lsl.start(
             session_id=f"wacom_test_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
             metadata={
@@ -61,12 +62,17 @@ class WacomDrawingCanvas(QWidget):
                 'canvas_height': canvas_height
             }
         )
-        
+
+        # 🆕🆕🆕 設置墨水系統的時間源為 LSL 時間
+        self.ink_system.set_time_source(self.lsl.stream_manager.get_stream_time)
+        self.logger.info("✅ 墨水系統時間源已設置為 LSL 時間")
+
         # 註冊回調
         self.ink_system.register_callback(
             'on_point_processed',
             self._on_point_processed_callback
         )
+
         self.ink_system.register_callback(
             'on_stroke_completed',
             self._on_stroke_completed_callback
@@ -119,7 +125,7 @@ class WacomDrawingCanvas(QWidget):
                 # 發送壓力為 0 的終點
                 final_point = self.last_point_data.copy()
                 final_point['pressure'] = 0.0
-                final_point['timestamp'] = time.time()
+                final_point['timestamp'] = self.lsl.stream_manager.get_stream_time()
                 
                 self.ink_system.process_raw_point(final_point)
                 time.sleep(0.1)
@@ -159,7 +165,7 @@ class WacomDrawingCanvas(QWidget):
                             'num_points': len(stroke_points),
                             'start_time': stroke_data['start_time'],
                             'end_time': stroke_data['end_time'],
-                            'timestamp': time.time()
+                            'timestamp': self.lsl.stream_manager.get_stream_time()
                         })
                     
                     time.sleep(0.2)
@@ -207,7 +213,8 @@ class WacomDrawingCanvas(QWidget):
             
             # ✅ 清理過舊的未完成筆劃（防止狀態混亂）
             if self.current_stroke_points and self.last_point_data is not None:
-                time_since_last_point = time.time() - self.last_point_data['timestamp']
+                current_time = self.lsl.stream_manager.get_stream_time()
+                time_since_last_point = current_time - self.last_point_data['timestamp']
                 
                 if time_since_last_point > 1.0:  # 超過 1 秒
                     self.logger.warning(f"⚠️ 清理舊筆劃（{time_since_last_point:.2f}s 前）")
@@ -255,7 +262,7 @@ class WacomDrawingCanvas(QWidget):
                     # 使用最後一個點的位置，但壓力設為 0
                     final_point = self.last_point_data.copy()
                     final_point['pressure'] = 0.0
-                    final_point['timestamp'] = time.time()
+                    final_point['timestamp'] = self.lsl.stream_manager.get_stream_time()
                     
                     self.logger.info(
                         f"🔚 發送終點: ({final_point['x']:.1f}, {final_point['y']:.1f}), "
@@ -334,7 +341,7 @@ class WacomDrawingCanvas(QWidget):
                     'x': event.x(),
                     'y': event.y(),
                     'pressure': current_pressure,
-                    'timestamp': time.time(),
+                    'timestamp': self.lsl.stream_manager.get_stream_time(),
                     'tilt_x': event.xTilt(),
                     'tilt_y': event.yTilt()
                 }
@@ -371,7 +378,7 @@ class WacomDrawingCanvas(QWidget):
                         'x': event.x(),
                         'y': event.y(),
                         'pressure': 0.0,
-                        'timestamp': time.time(),
+                        'timestamp': self.lsl.stream_manager.get_stream_time(),
                         'tilt_x': event.xTilt(),
                         'tilt_y': event.yTilt()
                     }
@@ -560,10 +567,17 @@ def test_wacom_with_full_system():
     print("✅ 處理已啟動（外部輸入模式）")
 
     
+    # ✅ 修改後
     # ✅ 創建 GUI
     app = QApplication(sys.argv)
     canvas = WacomDrawingCanvas(ink_system, config)
+
+    # 🆕🆕🆕 注意：時間源已在 WacomDrawingCanvas.__init__() 中設置
+    # 這裡不需要額外操作，只是確認一下
+    print("✅ LSL 時間源已設置")
+
     canvas.show()
+
     
     print("\n" + "=" * 60)
     print("🎨 請在視窗中使用 Wacom 筆書寫")
