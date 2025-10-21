@@ -26,7 +26,7 @@ class ProcessingConfig:
     canvas_height: int = 600
 
     # ==================== 處理參數 ====================
-    smoothing_enabled: bool = True
+    smoothing_enabled: bool = False
     smoothing_window_size: int = 5
     noise_threshold: float = 0.1
 
