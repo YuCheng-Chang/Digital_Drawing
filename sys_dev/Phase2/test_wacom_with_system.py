@@ -523,7 +523,8 @@ class WacomDrawingCanvas(QWidget):
         
         # 顯示統計資訊
         painter.setPen(QPen(QColor(100, 100, 100)))
-        stats_text = f"筆劃數: {self.stroke_count} | 總點數: {self.total_points} | 壓力: {self.current_pressure:.3f}"
+        stats_text = f"筆劃數: {self.stroke_count} | 總點數: {self.total_points} | 壓力: {self.current_pressure:.3f} | \
+        X: {self.last_point_data['x'] if self.last_point_data else 'N/A'} Y: {self.last_point_data['y'] if self.last_point_data else 'N/A'} "
         painter.drawText(10, 20, stats_text)
         
     def update_stats_display(self):
