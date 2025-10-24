@@ -190,33 +190,25 @@ class PointProcessor:
             return None
 
     def process_raw_point(self, raw_point: RawInkPoint,
-                         previous_points: List[ProcessedInkPoint] = None) -> ProcessedInkPoint:
-        """
-        處理單個原始墨水點
-
-        Args:
-            raw_point: 原始墨水點
-            previous_points: 前面的處理點列表 (用於計算衍生特徵)
-
-        Returns:
-            ProcessedInkPoint: 處理後的墨水點
-
-        Note:
-            - 座標正規化到 [0, 1] 範圍
-            - 計算速度、加速度、方向等衍生特徵
-            - 應用平滑濾波 (如果啟用)
-        """
+                        previous_points: List[ProcessedInkPoint] = None) -> ProcessedInkPoint:
+        """處理單個原始墨水點"""
         try:
-            # 1. 座標正規化
-            norm_x, norm_y = self.normalize_coordinates(
-                raw_point.x, raw_point.y, self.device_bounds
-            )
+            # ✅✅✅ 修復：檢查座標是否已經歸一化
+            if 0.0 <= raw_point.x <= 1.0 and 0.0 <= raw_point.y <= 1.0:
+                # 座標已經歸一化，直接使用
+                norm_x = raw_point.x
+                norm_y = raw_point.y
+            else:
+                # 座標未歸一化，需要正規化
+                norm_x, norm_y = self.normalize_coordinates(
+                    raw_point.x, raw_point.y, self.device_bounds
+                )
 
             # 2. 創建基礎處理點
             processed_point = ProcessedInkPoint(
                 x=norm_x,
                 y=norm_y,
-                pressure=max(0.0, min(1.0, raw_point.pressure)),  # 確保在 [0,1] 範圍
+                pressure=max(0.0, min(1.0, raw_point.pressure)),
                 tilt_x=raw_point.tilt_x,
                 tilt_y=raw_point.tilt_y,
                 twist=raw_point.twist,
@@ -229,7 +221,7 @@ class PointProcessor:
                 curvature=0.0,
 
                 # 初始化上下文屬性
-                stroke_id=-1,  # 將由 StrokeDetector 設置
+                stroke_id=-1,
                 point_index=-1,
                 distance_from_start=0.0,
 
@@ -264,8 +256,8 @@ class PointProcessor:
 
         except Exception as e:
             self.logger.error(f"處理原始點失敗: {str(e)}")
-            # 返回基本的處理點作為備用
             return self._create_fallback_point(raw_point)
+
 
     def normalize_coordinates(self, x: float, y: float,
                             device_bounds: Tuple[float, float, float, float]) -> Tuple[float, float]:

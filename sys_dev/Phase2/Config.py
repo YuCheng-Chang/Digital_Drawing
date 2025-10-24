@@ -166,7 +166,7 @@ class ProcessingConfig:
             self.pause_duration_threshold = 0.3        # ✅ 0.3秒
             self.min_stroke_duration = 0.02            # ✅ 改為 0.02秒（原來是 0.05）
             self.max_stroke_duration = 30.0            # ✅ 30秒
-            self.min_stroke_length = 0.1               # ✅ .1像素
+            self.min_stroke_length = 5              # ✅ 5像素
             self.enable_tilt_processing = True
             self.target_sampling_rate = 200
             self.data_collection_rate = 200

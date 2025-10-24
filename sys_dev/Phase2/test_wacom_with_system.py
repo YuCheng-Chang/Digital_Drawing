@@ -42,7 +42,7 @@ class WacomDrawingCanvas(QWidget):
         lsl_config = LSLStreamConfig(
             device_manufacturer="Wacom",
             device_model="Wacom One 12",
-            normalize_coordinates=True,
+            normalize_coordinates=False,
             screen_width=canvas_width,
             screen_height=canvas_height
         )
@@ -163,20 +163,18 @@ class WacomDrawingCanvas(QWidget):
         try:
             self.logger.info("🔚 Canvas closing...")
             
-            # ✅✅✅ 1. 處理未完成的筆劃（加強檢查）
             from StrokeDetector import StrokeState
             
-            # 檢查條件（新增更嚴格的檢查）
             is_stroke_active = (
                 hasattr(self.ink_system, 'stroke_detector') and 
                 self.ink_system.stroke_detector.current_state in [StrokeState.ACTIVE, StrokeState.STARTING]
             )
             
             has_unfinished_stroke = (
-                self.current_stroke_points and  # 有未完成的點
-                self.last_point_data is not None and  # 有最後點數據
-                self.pen_is_touching and  # 筆還在接觸屏幕
-                self.current_pressure > 0  # 壓力 > 0
+                self.current_stroke_points and
+                self.last_point_data is not None and
+                self.pen_is_touching and
+                self.current_pressure > 0
             )
             
             if is_stroke_active and has_unfinished_stroke:
@@ -184,7 +182,7 @@ class WacomDrawingCanvas(QWidget):
                 self.logger.info(f"   - 當前筆劃點數: {len(self.current_stroke_points)}")
                 self.logger.info(f"   - 當前壓力: {self.current_pressure:.3f}")
                 
-                # 發送壓力為 0 的終點
+                # ✅ 使用已經歸一化的座標
                 final_point = self.last_point_data.copy()
                 final_point['pressure'] = 0.0
                 final_point['timestamp'] = self.lsl.stream_manager.get_stream_time()
@@ -192,7 +190,6 @@ class WacomDrawingCanvas(QWidget):
                 self.ink_system.process_raw_point(final_point)
                 time.sleep(0.1)
             else:
-                # ✅ 記錄跳過的原因
                 reasons = []
                 if not is_stroke_active:
                     reasons.append("系統無活動筆劃")
@@ -318,9 +315,6 @@ class WacomDrawingCanvas(QWidget):
     def leaveEvent(self, event):
         """
         ✅✅✅ 筆離開畫布區域時觸發
-        需求：從內移出時，將離開畫布前最後一個點當筆劃終點
-        
-        關鍵：只有在「筆接觸屏幕」(壓力 > 0) 時才結束筆劃
         """
         try:
             self.logger.info(f"🚪 筆離開畫布區域 (當前壓力: {self.current_pressure:.3f})")
@@ -328,8 +322,6 @@ class WacomDrawingCanvas(QWidget):
             # 更新狀態
             self.pen_is_in_canvas = False
             
-            # ✅✅✅ 關鍵檢查：同時考慮位置、壓力和狀態
-            # 新增檢查：確保 stroke_detector 的狀態也是 ACTIVE
             from StrokeDetector import StrokeState
             
             is_stroke_active = (
@@ -340,36 +332,33 @@ class WacomDrawingCanvas(QWidget):
             if (self.pen_is_touching and 
                 self.current_pressure > 0 and 
                 self.current_stroke_points and
-                is_stroke_active):  # ← 新增：檢查系統狀態
+                is_stroke_active):
                 
                 self.logger.info("🔚 筆接觸屏幕時移出畫布，使用最後一個點作為筆劃終點")
                 
                 if self.last_point_data is not None:
-                    # 使用最後一個點的位置，但壓力設為 0
+                    # ✅ 使用已經歸一化的座標
                     final_point = self.last_point_data.copy()
                     final_point['pressure'] = 0.0
                     final_point['timestamp'] = self.lsl.stream_manager.get_stream_time()
                     
                     self.logger.info(
-                        f"🔚 發送終點: ({final_point['x']:.1f}, {final_point['y']:.1f}), "
+                        f"🔚 發送終點: 歸一化=({final_point['x']:.3f}, {final_point['y']:.3f}), "
                         f"pressure=0 (原壓力: {self.current_pressure:.3f})"
                     )
                     
                     self.ink_system.process_raw_point(final_point)
                     
-                    # 清空當前筆劃
                     self.all_strokes.append(self.current_stroke_points.copy())
                     self.current_stroke_points = []
                     self.stroke_count += 1
                     
-                    # ✅✅✅ 重置所有狀態（關鍵修改）
                     self.pen_is_touching = False
-                    self.current_pressure = 0.0  # ← 新增：清空壓力
+                    self.current_pressure = 0.0
                     self.last_point_data = None
                     
                     self.update()
             else:
-                # 筆懸空移出畫布，不需要處理
                 reason = []
                 if not self.pen_is_touching:
                     reason.append("筆未接觸屏幕")
@@ -390,18 +379,16 @@ class WacomDrawingCanvas(QWidget):
             self.logger.error(traceback.format_exc())
 
 
+
         
     def tabletEvent(self, event):
         """
         ✅✅✅ 接收 Wacom 輸入事件
-        需求：從外進入時，接觸畫布的第一個點當筆劃起始點
-        
-        關鍵：只處理「在畫布內」且「壓力 > 0」的點
         """
         try:
             # ✅ 獲取當前壓力
             current_pressure = event.pressure()
-            self.current_pressure = current_pressure  # 更新全局壓力狀態
+            self.current_pressure = current_pressure
             
             # ✅ 檢查點是否在畫布範圍內
             pos = event.pos()
@@ -421,11 +408,19 @@ class WacomDrawingCanvas(QWidget):
                 event.accept()
                 return
             
+            # ✅✅✅ 獲取像素座標
+            x_pixel = event.x()
+            y_pixel = event.y()
+            
+            # ✅✅✅ 歸一化座標
+            x_normalized = x_pixel / self.width()
+            y_normalized = y_pixel / self.height()
+            
             # ✅✅✅ 處理壓力 > 0 的情況（筆接觸屏幕）
             if current_pressure > 0:
                 point_data = {
-                    'x': event.x(),
-                    'y': event.y(),
+                    'x': x_normalized,  # ✅ 使用歸一化座標
+                    'y': y_normalized,  # ✅ 使用歸一化座標
                     'pressure': current_pressure,
                     'timestamp': self.lsl.stream_manager.get_stream_time(),
                     'tilt_x': event.xTilt(),
@@ -436,7 +431,8 @@ class WacomDrawingCanvas(QWidget):
                 if not self.pen_is_touching:
                     self.logger.info(
                         f"🎨 筆劃開始（第一個點）: "
-                        f"({point_data['x']:.1f}, {point_data['y']:.1f}), "
+                        f"像素=({x_pixel:.1f}, {y_pixel:.1f}), "
+                        f"歸一化=({x_normalized:.3f}, {y_normalized:.3f}), "
                         f"pressure={current_pressure:.3f}"
                     )
                     self.pen_is_touching = True
@@ -444,11 +440,11 @@ class WacomDrawingCanvas(QWidget):
                 # ✅ 記錄最後一個點
                 self.last_point_data = point_data
                 
-                # ✅ 傳遞給墨水處理系統
+                # ✅ 傳遞給墨水處理系統（歸一化座標）
                 self.ink_system.process_raw_point(point_data)
                 
-                # ✅ 用於即時繪製
-                self.current_stroke_points.append((event.x(), event.y(), current_pressure))
+                # ✅ 用於即時繪製（仍使用像素座標）
+                self.current_stroke_points.append((x_pixel, y_pixel, current_pressure))
                 self.total_points += 1
             
             # ✅✅✅ 處理壓力 = 0 的情況（筆離開屏幕）
@@ -456,13 +452,14 @@ class WacomDrawingCanvas(QWidget):
                 if self.pen_is_touching and self.current_stroke_points:
                     self.logger.info(
                         f"🔚 筆離開屏幕（壓力=0），筆劃結束 "
-                        f"at ({event.x():.1f}, {event.y():.1f})"
+                        f"at 像素=({x_pixel:.1f}, {y_pixel:.1f}), "
+                        f"歸一化=({x_normalized:.3f}, {y_normalized:.3f})"
                     )
                     
                     # ✅ 發送壓力 = 0 的事件通知筆劃結束
                     point_data = {
-                        'x': event.x(),
-                        'y': event.y(),
+                        'x': x_normalized,  # ✅ 使用歸一化座標
+                        'y': y_normalized,  # ✅ 使用歸一化座標
                         'pressure': 0.0,
                         'timestamp': self.lsl.stream_manager.get_stream_time(),
                         'tilt_x': event.xTilt(),
@@ -475,11 +472,10 @@ class WacomDrawingCanvas(QWidget):
                     self.current_stroke_points = []
                     self.stroke_count += 1
                     
-                    # ✅✅✅ 重置所有狀態（關鍵修改）
+                    # ✅✅✅ 重置所有狀態
                     self.pen_is_touching = False
-                    self.current_pressure = 0.0  # ← 新增：清空壓力
+                    self.current_pressure = 0.0
                     self.last_point_data = None
-
             
             self.update()
             event.accept()
@@ -521,11 +517,26 @@ class WacomDrawingCanvas(QWidget):
             painter.setPen(pen)
             painter.drawLine(int(x1), int(y1), int(x2), int(y2))
         
-        # 顯示統計資訊
+        # ✅✅✅ 修改統計資訊顯示
         painter.setPen(QPen(QColor(100, 100, 100)))
-        stats_text = f"筆劃數: {self.stroke_count} | 總點數: {self.total_points} | 壓力: {self.current_pressure:.3f} | \
-        X: {self.last_point_data['x'] if self.last_point_data else 'N/A'} Y: {self.last_point_data['y'] if self.last_point_data else 'N/A'} "
+        
+        if self.last_point_data:
+            # 轉換歸一化座標回像素座標用於顯示
+            x_pixel = self.last_point_data['x'] * self.width()
+            y_pixel = self.last_point_data['y'] * self.height()
+            stats_text = (
+                f"筆劃數: {self.stroke_count} | 總點數: {self.total_points} | "
+                f"壓力: {self.current_pressure:.3f} | "
+                f"位置: ({x_pixel:.0f}, {y_pixel:.0f})"
+            )
+        else:
+            stats_text = (
+                f"筆劃數: {self.stroke_count} | 總點數: {self.total_points} | "
+                f"壓力: {self.current_pressure:.3f} | 位置: N/A"
+            )
+        
         painter.drawText(10, 20, stats_text)
+
         
     def update_stats_display(self):
         """更新統計顯示"""
@@ -549,8 +560,6 @@ def test_wacom_with_full_system():
         target_sampling_rate=200,
         smoothing_enabled=True,
         feature_types=['basic', 'kinematic', 'pressure'],
-        canvas_width=800,
-        canvas_height=600
     )
     
     print(f"\n📐 畫布配置: {config.canvas_width} x {config.canvas_height}")
