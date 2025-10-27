@@ -2,6 +2,9 @@ from dataclasses import dataclass
 from typing import List, Optional, Dict, Any, Tuple
 from enum import Enum
 import numpy as np
+from enum import Enum
+from dataclasses import dataclass
+from typing import List, Optional
 
 class StrokeState(Enum):
   """筆劃狀態枚舉"""
@@ -114,3 +117,32 @@ class InkEvent:
   point_data: Optional[ProcessedInkPoint]
   metadata: Dict[str, Any]
 
+
+
+
+
+class ToolType(Enum):
+    """工具類型"""
+    PEN = "pen"
+    ERASER = "eraser"
+
+@dataclass
+class StrokeMetadata:
+    """筆劃元數據"""
+    stroke_id: int
+    tool_type: ToolType
+    timestamp_start: float
+    timestamp_end: float
+    is_deleted: bool = False          # 是否被橡皮擦刪除
+    deleted_by: Optional[int] = None  # 被哪個橡皮擦筆劃刪除
+    deleted_at: Optional[float] = None  # 刪除時間
+
+@dataclass
+class EraserStroke:
+    """橡皮擦筆劃"""
+    eraser_id: int
+    points: List[ProcessedInkPoint]  # 橡皮擦軌跡點
+    radius: float                     # 橡皮擦半徑（像素）
+    deleted_stroke_ids: List[int]     # 刪除了哪些筆劃
+    timestamp_start: float
+    timestamp_end: float

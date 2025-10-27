@@ -6,11 +6,10 @@ LSL Integration Module
 """
 
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime
 from LSLStreamManager import LSLStreamManager, LSLStreamConfig
 from LSLDataRecorder import LSLDataRecorder
-
 
 class LSLIntegration:
     """
@@ -159,6 +158,37 @@ class LSLIntegration:
         except Exception as e:
             self.logger.error(f"Error processing ink point: {e}")
 
+    def mark_eraser_stroke(self, 
+                          eraser_id: int,
+                          deleted_stroke_ids: List[int],
+                          timestamp: float):
+        """
+        記錄橡皮擦筆劃事件
+        
+        Args:
+            eraser_id: 橡皮擦筆劃 ID
+            deleted_stroke_ids: 被刪除的筆劃 ID 列表
+            timestamp: 時間戳
+        """
+        if not self.is_active:
+            return
+        
+        try:
+            import json
+            
+            # 構建標記
+            marker = f"eraser_{eraser_id}|deleted_strokes:{json.dumps(deleted_stroke_ids)}"
+            
+            self.stream_manager.push_marker(marker, timestamp)
+            self.data_recorder.record_marker(timestamp, marker)
+            
+            self.logger.info(
+                f"🧹 橡皮擦事件已記錄: eraser_id={eraser_id}, "
+                f"deleted={len(deleted_stroke_ids)} strokes"
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Error marking eraser stroke: {e}")
 
     
     def mark_experiment_phase(self, phase_name: str):
