@@ -1,5 +1,5 @@
 # test_wacom_with_system.py
-from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QHBoxLayout, QVBoxLayout  # ← 新增 QPushButton, QHBoxLayout, QVBoxLayout
+from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QHBoxLayout, QVBoxLayout
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPainter, QPen, QColor, QTabletEvent
 import sys
@@ -8,8 +8,9 @@ from datetime import datetime
 import logging
 from InkProcessingSystemMainController import InkProcessingSystem
 from Config import ProcessingConfig
-from DigitalInkDataStructure import ToolType, StrokeMetadata  # ← 新增
-from EraserTool import EraserTool  # ← 新增
+from DigitalInkDataStructure import ToolType, StrokeMetadata 
+from EraserTool import EraserTool
+import os
 
 class WacomDrawingCanvas(QWidget):
     def __init__(self, ink_system, config: ProcessingConfig):
@@ -115,7 +116,7 @@ class WacomDrawingCanvas(QWidget):
             canvas_width = self.config.canvas_width
             canvas_height = self.config.canvas_height
             
-            # 🆕🆕🆕 關鍵修改：直接轉換為像素座標（不再需要減去工具欄高度）
+            # 🔧🔧🔧 關鍵修改：轉換為像素座標（不減去工具欄高度）
             pixel_points = [
                 (p.x * canvas_width, p.y * canvas_height, p.pressure)
                 for p in stroke_points
@@ -150,6 +151,7 @@ class WacomDrawingCanvas(QWidget):
             self.logger.error(f"❌ 處理筆劃完成回調時出錯: {e}")
             import traceback
             self.logger.error(traceback.format_exc())
+
 
 
     
@@ -238,9 +240,9 @@ class WacomDrawingCanvas(QWidget):
                 self.last_point_data = point_data
                 self.ink_system.process_raw_point(point_data)
                 
-                # 🆕🆕🆕 關鍵修改：不再需要減去工具欄高度
-                # 因為 y_normalized 已經基於畫布座標系計算
-                canvas_y_pixel = y_pixel - 50  # 轉換到畫布座標系用於顯示
+                # 🔧🔧🔧 關鍵修改：用於顯示的座標需要減去工具欄高度
+                toolbar_height = 50
+                canvas_y_pixel = y_pixel - toolbar_height  # ← 只在顯示時減去
                 self.current_stroke_points.append((x_pixel, canvas_y_pixel, current_pressure))
                 
                 self.total_points += 1
@@ -372,7 +374,7 @@ class WacomDrawingCanvas(QWidget):
 
     def export_canvas_image(self, output_path: str):
         """
-        將畫布匯出為 PNG 圖片
+        將畫布匯出為 PNG 圖片（只保存畫布區域，不包含工具欄）
         
         Args:
             output_path: 輸出檔案路徑
@@ -380,19 +382,21 @@ class WacomDrawingCanvas(QWidget):
         try:
             from PyQt5.QtGui import QPixmap
             
-            # 創建與畫布相同大小的 QPixmap
-            pixmap = QPixmap(self.size())
+            # 🔧🔧🔧 關鍵修改：只創建畫布大小的 QPixmap
+            canvas_width = self.config.canvas_width   # 800
+            canvas_height = self.config.canvas_height  # 600
+            
+            pixmap = QPixmap(canvas_width, canvas_height)  # ← 只有畫布大小
             pixmap.fill(Qt.white)  # 白色背景
             
             # 使用 QPainter 繪製到 pixmap
             painter = QPainter(pixmap)
             painter.setRenderHint(QPainter.Antialiasing)
             
-            # 🆕🆕🆕 計算工具欄偏移（避開工具欄）
-            toolbar_height = 50
-            painter.translate(0, toolbar_height)
+            # 🔧🔧🔧 關鍵修改：不需要平移（因為 pixmap 只有畫布大小）
+            # 不需要 painter.translate(0, toolbar_height)
             
-            # ✅✅✅ 修復：正確處理字典格式的筆劃
+            # ✅✅✅ 繪製筆劃
             pen = QPen(QColor(0, 0, 0), 2)
             painter.setPen(pen)
             
@@ -400,10 +404,12 @@ class WacomDrawingCanvas(QWidget):
                 if stroke.get('is_deleted', False):
                     continue  # 跳過已刪除的筆劃
                 
-                points = stroke['points']  # ← 關鍵修復：獲取點列表
+                points = stroke['points']
                 for i in range(len(points) - 1):
                     x1, y1, p1 = points[i]
                     x2, y2, p2 = points[i + 1]
+                    
+                    # 🔧🔧🔧 關鍵修改：直接使用像素座標（不需要減去工具欄高度）
                     width = 1 + p1 * 5
                     pen.setWidthF(width)
                     painter.setPen(pen)
@@ -416,9 +422,15 @@ class WacomDrawingCanvas(QWidget):
             
             if success:
                 self.logger.info(f"✅ 畫布已匯出: {output_path}")
+                
+                # 顯示檔案大小和尺寸
+                file_size = os.path.getsize(output_path) / 1024  # KB
+                self.logger.info(f"   - 檔案大小: {file_size:.2f} KB")
+                self.logger.info(f"   - 圖片尺寸: {canvas_width}x{canvas_height}")
+                
                 return True
             else:
-                self.logger.error(f"❌ 匯出失敗: {output_path}")
+                self.logger.error(f"❌ 保存失敗: {output_path}")
                 return False
                 
         except Exception as e:
@@ -663,15 +675,6 @@ class WacomDrawingCanvas(QWidget):
             pos = event.pos()
             is_in_bounds = self.rect().contains(pos)
             
-            # ✅ 更新筆在畫布內的狀態
-            if is_in_bounds and not self.pen_is_in_canvas:
-                self.logger.debug(f"✅ 筆進入畫布範圍: ({pos.x()}, {pos.y()}), pressure={current_pressure:.3f}")
-                self.pen_is_in_canvas = True
-            elif not is_in_bounds and self.pen_is_in_canvas:
-                self.logger.debug(f"⚠️ 筆移出畫布範圍: ({pos.x()}, {pos.y()}), pressure={current_pressure:.3f}")
-                self.pen_is_in_canvas = False
-            
-            # ✅✅✅ 關鍵：只處理在畫布範圍內的點
             if not is_in_bounds:
                 self.logger.debug(f"⏭️ 點在畫布外，跳過處理: ({pos.x()}, {pos.y()})")
                 event.accept()
@@ -681,23 +684,13 @@ class WacomDrawingCanvas(QWidget):
             x_pixel = event.x()
             y_pixel = event.y()
             
-            # 🆕🆕🆕 關鍵修改：基於畫布區域進行歸一化
-            toolbar_height = 50
+            # 🔧🔧🔧 關鍵修改：基於畫布尺寸進行歸一化（不考慮工具欄偏移）
             canvas_width = self.config.canvas_width   # 800
             canvas_height = self.config.canvas_height  # 600
             
-            # 調整 y_pixel 到畫布座標系（減去工具欄高度）
-            canvas_y_pixel = y_pixel - toolbar_height
-            
-            # 確保座標在有效範圍內
-            if canvas_y_pixel < 0 or canvas_y_pixel >= canvas_height:
-                self.logger.debug(f"⏭️ 點在畫布Y範圍外，跳過處理: canvas_y={canvas_y_pixel}")
-                event.accept()
-                return
-            
-            # 基於畫布尺寸進行歸一化
+            # ✅ 直接基於畫布尺寸歸一化（不減去工具欄高度）
             x_normalized = x_pixel / canvas_width
-            y_normalized = canvas_y_pixel / canvas_height
+            y_normalized = y_pixel / canvas_height  # ← 關鍵修改：不減去 50
             
             # 🆕🆕🆕 根據當前工具處理
             if self.current_tool == ToolType.PEN:
@@ -713,6 +706,7 @@ class WacomDrawingCanvas(QWidget):
             import traceback
             self.logger.error(traceback.format_exc())
             event.accept()
+
 
 
         
@@ -737,10 +731,15 @@ class WacomDrawingCanvas(QWidget):
             for i in range(len(points) - 1):
                 x1, y1, p1 = points[i]
                 x2, y2, p2 = points[i + 1]
+                
+                # 🔧🔧🔧 關鍵修改：繪製時需要減去工具欄高度
                 width = 1 + p1 * 5
                 pen.setWidthF(width)
                 painter.setPen(pen)
-                painter.drawLine(int(x1), int(y1), int(x2), int(y2))
+                painter.drawLine(
+                    int(x1), int(y1 - toolbar_height),  # ← 減去工具欄高度
+                    int(x2), int(y2 - toolbar_height)   # ← 減去工具欄高度
+                )
         
         # 繪製當前筆劃（藍色）
         if self.current_tool == ToolType.PEN and self.current_stroke_points:
