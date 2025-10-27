@@ -112,13 +112,16 @@ class WacomDrawingCanvas(QWidget):
             
             self.logger.info(f"✅ Stroke {stroke_id} completed")
             
-            # 轉換為新的數據格式（字典 + 元數據）
             canvas_width = self.config.canvas_width
             canvas_height = self.config.canvas_height
             
-            # 🔧🔧🔧 關鍵修改：轉換為像素座標（不減去工具欄高度）
+            # 🔧 關鍵修改：不減去工具欄高度（因為歸一化時已經處理）
             pixel_points = [
-                (p.x * canvas_width, p.y * canvas_height, p.pressure)
+                (
+                    p.x * canvas_width, 
+                    p.y * canvas_height,  # ← 不減去 50
+                    p.pressure
+                )
                 for p in stroke_points
             ]
             
@@ -240,10 +243,8 @@ class WacomDrawingCanvas(QWidget):
                 self.last_point_data = point_data
                 self.ink_system.process_raw_point(point_data)
                 
-                # 🔧🔧🔧 關鍵修改：用於顯示的座標需要減去工具欄高度
-                toolbar_height = 50
-                canvas_y_pixel = y_pixel - toolbar_height  # ← 只在顯示時減去
-                self.current_stroke_points.append((x_pixel, canvas_y_pixel, current_pressure))
+                # 🔧 關鍵修改：y_pixel 已經是調整後的座標，直接使用
+                self.current_stroke_points.append((x_pixel, y_pixel, current_pressure))
                 
                 self.total_points += 1
             
@@ -280,20 +281,20 @@ class WacomDrawingCanvas(QWidget):
     def _handle_eraser_input(self, x_pixel, y_pixel, current_pressure, event):
         """處理橡皮擦輸入"""
         try:
-            # 🆕🆕🆕 關鍵修改：減去工具欄高度
-            toolbar_height = 50
-            adjusted_y = y_pixel - toolbar_height
+            # ✅✅✅ 關鍵修改：不再減去工具欄高度（已在 tabletEvent 中處理）
+            # toolbar_height = 50
+            # adjusted_y = y_pixel - toolbar_height  # ← 移除這行
             
             if current_pressure > 0:
-                # 記錄橡皮擦軌跡（使用調整後的座標）
-                self.current_eraser_points.append((x_pixel, adjusted_y))
+                # ✅ 直接使用傳入的 y_pixel（已經是調整後的座標）
+                self.current_eraser_points.append((x_pixel, y_pixel))
                 
                 # 🆕🆕🆕 初始化被刪除的筆劃 ID 集合
                 if not hasattr(self, 'current_deleted_stroke_ids'):
                     self.current_deleted_stroke_ids = set()
                 
                 # 即時檢測碰撞並標記刪除
-                eraser_point = (x_pixel, adjusted_y)
+                eraser_point = (x_pixel, y_pixel)  # ← 直接使用 y_pixel
                 for stroke in self.all_strokes:
                     if stroke['is_deleted']:
                         continue
@@ -301,7 +302,7 @@ class WacomDrawingCanvas(QWidget):
                     if self.eraser_tool.check_collision(eraser_point, stroke['points']):
                         stroke['is_deleted'] = True
                         stroke['metadata'].is_deleted = True
-                        self.current_deleted_stroke_ids.add(stroke['stroke_id'])  # 🆕 記錄 ID
+                        self.current_deleted_stroke_ids.add(stroke['stroke_id'])
                         self.logger.info(f"🗑️ 刪除筆劃: {stroke['stroke_id']}")
                 
                 if not self.pen_is_touching:
@@ -373,28 +374,18 @@ class WacomDrawingCanvas(QWidget):
             self.logger.warning("⚠️ 沒有可撤銷的操作")
 
     def export_canvas_image(self, output_path: str):
-        """
-        將畫布匯出為 PNG 圖片（只保存畫布區域，不包含工具欄）
-        
-        Args:
-            output_path: 輸出檔案路徑
-        """
+        """將畫布匯出為 PNG 圖片"""
         try:
             from PyQt5.QtGui import QPixmap
             
-            # 🔧🔧🔧 關鍵修改：只創建畫布大小的 QPixmap
-            canvas_width = self.config.canvas_width   # 800
-            canvas_height = self.config.canvas_height  # 600
+            canvas_width = self.config.canvas_width
+            canvas_height = self.config.canvas_height
             
-            pixmap = QPixmap(canvas_width, canvas_height)  # ← 只有畫布大小
-            pixmap.fill(Qt.white)  # 白色背景
+            pixmap = QPixmap(canvas_width, canvas_height)
+            pixmap.fill(Qt.white)
             
-            # 使用 QPainter 繪製到 pixmap
             painter = QPainter(pixmap)
             painter.setRenderHint(QPainter.Antialiasing)
-            
-            # 🔧🔧🔧 關鍵修改：不需要平移（因為 pixmap 只有畫布大小）
-            # 不需要 painter.translate(0, toolbar_height)
             
             # ✅✅✅ 繪製筆劃
             pen = QPen(QColor(0, 0, 0), 2)
@@ -402,14 +393,14 @@ class WacomDrawingCanvas(QWidget):
             
             for stroke in self.all_strokes:
                 if stroke.get('is_deleted', False):
-                    continue  # 跳過已刪除的筆劃
+                    continue
                 
                 points = stroke['points']
                 for i in range(len(points) - 1):
                     x1, y1, p1 = points[i]
                     x2, y2, p2 = points[i + 1]
                     
-                    # 🔧🔧🔧 關鍵修改：直接使用像素座標（不需要減去工具欄高度）
+                    # 🔧🔧🔧 關鍵修改:直接使用像素座標(已經減去工具欄高度)
                     width = 1 + p1 * 5
                     pen.setWidthF(width)
                     painter.setPen(pen)
@@ -417,17 +408,12 @@ class WacomDrawingCanvas(QWidget):
             
             painter.end()
             
-            # 保存為 PNG
             success = pixmap.save(output_path, 'PNG')
             
             if success:
                 self.logger.info(f"✅ 畫布已匯出: {output_path}")
-                
-                # 顯示檔案大小和尺寸
-                file_size = os.path.getsize(output_path) / 1024  # KB
+                file_size = os.path.getsize(output_path) / 1024
                 self.logger.info(f"   - 檔案大小: {file_size:.2f} KB")
-                self.logger.info(f"   - 圖片尺寸: {canvas_width}x{canvas_height}")
-                
                 return True
             else:
                 self.logger.error(f"❌ 保存失敗: {output_path}")
@@ -438,6 +424,7 @@ class WacomDrawingCanvas(QWidget):
             import traceback
             self.logger.error(traceback.format_exc())
             return False
+
 
     def closeEvent(self, event):
         """視窗關閉時的處理"""
@@ -663,15 +650,11 @@ class WacomDrawingCanvas(QWidget):
 
         
     def tabletEvent(self, event):
-        """
-        ✅✅✅ 接收 Wacom 輸入事件（支持橡皮擦）
-        """
+        """接收 Wacom 輸入事件（支持橡皮擦）"""
         try:
-            # ✅ 獲取當前壓力
             current_pressure = event.pressure()
             self.current_pressure = current_pressure
             
-            # ✅ 檢查點是否在畫布範圍內
             pos = event.pos()
             is_in_bounds = self.rect().contains(pos)
             
@@ -680,23 +663,26 @@ class WacomDrawingCanvas(QWidget):
                 event.accept()
                 return
             
-            # ✅✅✅ 獲取像素座標
+            # 獲取像素座標
             x_pixel = event.x()
             y_pixel = event.y()
             
-            # 🔧🔧🔧 關鍵修改：基於畫布尺寸進行歸一化（不考慮工具欄偏移）
-            canvas_width = self.config.canvas_width   # 800
-            canvas_height = self.config.canvas_height  # 600
+            # 🔧 關鍵修改：先減去工具欄高度
+            toolbar_height = 50
+            canvas_width = self.config.canvas_width
+            canvas_height = self.config.canvas_height
             
-            # ✅ 直接基於畫布尺寸歸一化（不減去工具欄高度）
+            adjusted_y = y_pixel - toolbar_height
+            
+            # 基於調整後的座標進行歸一化
             x_normalized = x_pixel / canvas_width
-            y_normalized = y_pixel / canvas_height  # ← 關鍵修改：不減去 50
+            y_normalized = adjusted_y / canvas_height
             
-            # 🆕🆕🆕 根據當前工具處理
+            # ✅✅✅ 關鍵修改：兩個工具都傳入調整後的座標
             if self.current_tool == ToolType.PEN:
-                self._handle_pen_input(x_pixel, y_pixel, x_normalized, y_normalized, current_pressure, event)
+                self._handle_pen_input(x_pixel, adjusted_y, x_normalized, y_normalized, current_pressure, event)
             elif self.current_tool == ToolType.ERASER:
-                self._handle_eraser_input(x_pixel, y_pixel, current_pressure, event)
+                self._handle_eraser_input(x_pixel, adjusted_y, current_pressure, event)  # ← 改為 adjusted_y
             
             self.update()
             event.accept()
@@ -711,15 +697,15 @@ class WacomDrawingCanvas(QWidget):
 
         
     def paintEvent(self, event):
-        """繪製筆劃（支持橡皮擦）"""
+        """繪製筆劃(支持橡皮擦)"""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         
-        # 🆕🆕🆕 計算工具欄偏移（避開工具欄）
+        # 🆕🆕🆕 計算工具欄偏移(避開工具欄)
         toolbar_height = 50
         painter.translate(0, toolbar_height)  # ← 向下平移 50 像素
         
-        # 繪製未刪除的筆劃（黑色）
+        # 繪製未刪除的筆劃(黑色)
         pen = QPen(QColor(0, 0, 0), 2)
         painter.setPen(pen)
         
@@ -732,13 +718,13 @@ class WacomDrawingCanvas(QWidget):
                 x1, y1, p1 = points[i]
                 x2, y2, p2 = points[i + 1]
                 
-                # 🔧🔧🔧 關鍵修改：繪製時需要減去工具欄高度
+                # 🔧🔧🔧 關鍵修改:不需要再減去工具欄高度(已經在保存時減去)
                 width = 1 + p1 * 5
                 pen.setWidthF(width)
                 painter.setPen(pen)
                 painter.drawLine(
-                    int(x1), int(y1 - toolbar_height),  # ← 減去工具欄高度
-                    int(x2), int(y2 - toolbar_height)   # ← 減去工具欄高度
+                    int(x1), int(y1),  # ← 直接使用保存的座標
+                    int(x2), int(y2)
                 )
         
         # 繪製當前筆劃（藍色）

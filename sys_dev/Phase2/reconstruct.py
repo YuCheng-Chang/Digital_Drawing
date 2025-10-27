@@ -138,9 +138,14 @@ class InkDrawingReconstructor:
                 else:
                     deleted_stroke_ids = []
                 
-                eraser_events[eraser_id] = deleted_stroke_ids
-                
-                logger.info(f"🧹 橡皮擦事件 {eraser_id}: 刪除筆劃 {deleted_stroke_ids}")
+                # 🔧 修復：累積模式，而不是覆蓋
+                if eraser_id in eraser_events:
+                    eraser_events[eraser_id].extend(deleted_stroke_ids)
+                    logger.info(f"🧹 橡皮擦事件 {eraser_id}: 累積刪除筆劃 {deleted_stroke_ids} (總計: {eraser_events[eraser_id]})")
+                else:
+                    eraser_events[eraser_id] = deleted_stroke_ids
+                    logger.info(f"🧹 橡皮擦事件 {eraser_id}: 刪除筆劃 {deleted_stroke_ids}")
+
         
         if not eraser_events:
             logger.info("ℹ️ 沒有檢測到橡皮擦事件")
