@@ -182,11 +182,6 @@ class WacomDrawingCanvas(QWidget):
         clear_button.clicked.connect(self.clear_canvas)
         toolbar_layout.addWidget(clear_button)
         
-        # ↩️ 撤銷按鈕
-        undo_button = QPushButton("↩️ 撤銷")
-        undo_button.setFixedSize(100, 40)
-        undo_button.clicked.connect(self.undo_last_action)
-        toolbar_layout.addWidget(undo_button)
         
         # 添加彈性空間
         toolbar_layout.addStretch()
@@ -364,14 +359,6 @@ class WacomDrawingCanvas(QWidget):
         self.update()
         self.logger.info("🗑️ 畫布已清空")
     
-    def undo_last_action(self):
-        """撤銷最後一個操作"""
-        if self.eraser_tool.undo_last_erase(self.all_strokes):
-            self.logger.info("↩️ 撤銷橡皮擦操作")
-            self.lsl.mark_custom_event("eraser_undo")
-            self.update()
-        else:
-            self.logger.warning("⚠️ 沒有可撤銷的操作")
 
     def export_canvas_image(self, output_path: str):
         """將畫布匯出為 PNG 圖片"""

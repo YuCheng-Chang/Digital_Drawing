@@ -108,6 +108,49 @@ class InkDrawingReconstructor:
             logger.error(f"❌ 讀取 markers.csv 失敗: {e}")
             return pd.DataFrame(columns=['timestamp', 'marker_text'])
     
+    def parse_canvas_clear_events(self, markers_df: pd.DataFrame, strokes: dict) -> set:
+        """
+        解析清空畫布事件，找出應該被清除的筆劃
+        
+        Args:
+            markers_df: 標記數據 DataFrame
+            strokes: 所有筆劃字典 {stroke_id: [(x, y, pressure), ...]}
+            
+        Returns:
+            set: 應該被清除的筆劃 ID 集合
+        """
+        cleared_stroke_ids = set()
+        
+        # 找出所有清空畫布事件的時間戳
+        canvas_clear_events = markers_df[
+            markers_df['marker_text'] == 'canvas_cleared'
+        ]['timestamp'].tolist()
+        
+        if not canvas_clear_events:
+            logger.info("ℹ️ 沒有檢測到清空畫布事件")
+            return cleared_stroke_ids
+        
+        logger.info(f"🗑️ 檢測到 {len(canvas_clear_events)} 個清空畫布事件")
+        
+        # 找出每個清空事件之前結束的筆劃
+        for clear_time in canvas_clear_events:
+            # 找出在清空事件之前結束的筆劃
+            strokes_before_clear = markers_df[
+                (markers_df['marker_text'].str.contains('stroke_end_')) &
+                (markers_df['timestamp'] < clear_time)
+            ]['marker_text'].tolist()
+            
+            # 提取筆劃 ID
+            for marker in strokes_before_clear:
+                match = re.search(r'stroke_end_(\d+)', marker)
+                if match:
+                    stroke_id = int(match.group(1))
+                    cleared_stroke_ids.add(stroke_id)
+            
+            logger.info(f"🗑️ 清空畫布事件 (時間: {clear_time:.4f}): 將清除筆劃 {sorted(cleared_stroke_ids)}")
+        
+        return cleared_stroke_ids
+
     def parse_eraser_events(self, markers_df: pd.DataFrame) -> dict:
         """
         解析橡皮擦事件，提取被刪除的筆劃 ID
@@ -178,7 +221,15 @@ class InkDrawingReconstructor:
         
         for idx, row in df.iterrows():
             event_type = row['event_type']
-            stroke_id = row.get('stroke_id', 0)  # 如果沒有 stroke_id 欄位，預設為 0
+            stroke_id = row.get('stroke_id', None)
+            
+            # 🔧 修復：跳過 stroke_id 為 None 或 NaN 的點
+            if stroke_id is None or pd.isna(stroke_id):
+                logger.warning(f"⚠️ 跳過無效的 stroke_id: {stroke_id} at index {idx}")
+                continue
+            
+            # 🔧 修復：確保 stroke_id 是整數
+            stroke_id = int(stroke_id)
             
             # 根據座標類型決定是否轉換
             if is_normalized:
@@ -210,6 +261,9 @@ class InkDrawingReconstructor:
         if current_stroke and current_stroke_id is not None:
             strokes[current_stroke_id] = current_stroke
         
+        # 🔧 修復：移除 None 鍵（如果存在）
+        strokes = {k: v for k, v in strokes.items() if k is not None}
+        
         logger.info(f"✅ 解析出 {len(strokes)} 個筆劃")
         
         # 統計信息
@@ -218,7 +272,11 @@ class InkDrawingReconstructor:
         if strokes:
             avg_points = total_points / len(strokes)
             logger.info(f"   - 平均每筆劃點數: {avg_points:.1f}")
-            logger.info(f"   - 筆劃 ID 範圍: {min(strokes.keys())} ~ {max(strokes.keys())}")
+            
+            # 🔧 修復：過濾掉 None 值後再計算範圍
+            valid_stroke_ids = [sid for sid in strokes.keys() if sid is not None]
+            if valid_stroke_ids:
+                logger.info(f"   - 筆劃 ID 範圍: {min(valid_stroke_ids)} ~ {max(valid_stroke_ids)}")
         
         # 顯示像素座標範圍
         if strokes:
@@ -228,28 +286,42 @@ class InkDrawingReconstructor:
             logger.info(f"   - 像素 Y 範圍: [{min(all_y):.1f}, {max(all_y):.1f}]")
         
         return strokes
+
+
     
-    def apply_eraser_events(self, strokes: dict, eraser_events: dict) -> dict:
+    def apply_deletion_events(self, strokes: dict, eraser_events: dict, cleared_strokes: set) -> dict:
         """
-        應用橡皮擦事件，刪除對應的筆劃
+        應用刪除事件（橡皮擦 + 清空畫布）
         
         Args:
             strokes: {stroke_id: [(x, y, pressure), ...]}
             eraser_events: {eraser_id: [deleted_stroke_ids]}
+            cleared_strokes: 清空畫布事件刪除的筆劃 ID 集合
             
         Returns:
             dict: 刪除後的筆劃字典
         """
-        if not eraser_events:
-            logger.info("ℹ️ 沒有橡皮擦事件，返回原始筆劃")
-            return strokes
-        
         # 收集所有被刪除的筆劃 ID
-        all_deleted_ids = set()
+        all_deleted_ids = set(cleared_strokes)  # 先加入清空畫布刪除的筆劃
+        
+        # 加入橡皮擦刪除的筆劃
         for eraser_id, deleted_ids in eraser_events.items():
             all_deleted_ids.update(deleted_ids)
         
-        logger.info(f"🧹 應用橡皮擦事件: 將刪除筆劃 {sorted(all_deleted_ids)}")
+        if not all_deleted_ids:
+            logger.info("ℹ️ 沒有刪除事件，返回原始筆劃")
+            return strokes
+        
+        logger.info(f"🗑️ 應用刪除事件: 將刪除筆劃 {sorted(all_deleted_ids)}")
+        
+        if cleared_strokes:
+            logger.info(f"   - 清空畫布刪除: {sorted(cleared_strokes)}")
+        
+        if eraser_events:
+            eraser_deleted = set()
+            for deleted_ids in eraser_events.values():
+                eraser_deleted.update(deleted_ids)
+            logger.info(f"   - 橡皮擦刪除: {sorted(eraser_deleted)}")
         
         # 創建新的筆劃字典（排除被刪除的）
         remaining_strokes = {
@@ -262,9 +334,14 @@ class InkDrawingReconstructor:
         logger.info(f"✅ 刪除了 {deleted_count} 個筆劃，剩餘 {len(remaining_strokes)} 個筆劃")
         
         if remaining_strokes:
-            logger.info(f"   - 剩餘筆劃 ID: {sorted(remaining_strokes.keys())}")
+            # 🔧 修復：過濾掉 None 值後再排序
+            valid_remaining_ids = [sid for sid in remaining_strokes.keys() if sid is not None]
+            if valid_remaining_ids:
+                logger.info(f"   - 剩餘筆劃 ID: {sorted(valid_remaining_ids)}")
         
         return remaining_strokes
+
+
     
     def reconstruct_drawing(self, strokes: dict, output_path: str) -> bool:
         """
@@ -279,6 +356,12 @@ class InkDrawingReconstructor:
         """
         try:
             logger.info(f"開始重建繪圖...")
+            
+            # 🔧 修復：過濾掉 None 鍵
+            strokes = {k: v for k, v in strokes.items() if k is not None}
+            
+            if not strokes:
+                logger.warning("⚠️ 沒有有效的筆劃可繪製，生成空白圖片")
             
             # 確保 QApplication 存在
             app = QApplication.instance()
@@ -345,10 +428,11 @@ class InkDrawingReconstructor:
             import traceback
             logger.error(traceback.format_exc())
             return False
+
     
     def process(self, csv_path: str, output_path: str = None) -> bool:
         """
-        完整處理流程（支援橡皮擦）
+        完整處理流程（支援橡皮擦 + 清空畫布）
         
         Args:
             csv_path: CSV 檔案路徑
@@ -364,7 +448,7 @@ class InkDrawingReconstructor:
                 output_path = os.path.join(csv_dir, "reconstruct.png")
             
             logger.info("=" * 60)
-            logger.info("🎨 開始重建數位墨水繪圖（支援橡皮擦）")
+            logger.info("🎨 開始重建數位墨水繪圖（支援橡皮擦 + 清空畫布）")
             logger.info("=" * 60)
             logger.info(f"輸入: {csv_path}")
             logger.info(f"輸出: {output_path}")
@@ -372,7 +456,7 @@ class InkDrawingReconstructor:
             # 1. 讀取墨水數據
             df = self.load_ink_data(csv_path)
             
-            # 2. 讀取標記數據（橡皮擦事件）
+            # 2. 讀取標記數據（橡皮擦事件 + 清空畫布）
             markers_df = self.load_markers(csv_dir)
             
             # 3. 解析筆劃
@@ -385,14 +469,17 @@ class InkDrawingReconstructor:
             # 4. 解析橡皮擦事件
             eraser_events = self.parse_eraser_events(markers_df)
             
-            # 5. 應用橡皮擦事件
-            final_strokes = self.apply_eraser_events(strokes, eraser_events)
+            # 5. 解析清空畫布事件
+            cleared_strokes = self.parse_canvas_clear_events(markers_df, strokes)
+            
+            # 6. 應用刪除事件（橡皮擦 + 清空畫布）
+            final_strokes = self.apply_deletion_events(strokes, eraser_events, cleared_strokes)
             
             if not final_strokes:
-                logger.warning("⚠️ 所有筆劃都被橡皮擦刪除了")
+                logger.warning("⚠️ 所有筆劃都被刪除了")
                 # 仍然生成空白圖片
             
-            # 6. 重建繪圖
+            # 7. 重建繪圖
             success = self.reconstruct_drawing(final_strokes, output_path)
             
             if success:
@@ -440,7 +527,7 @@ def select_csv_file() -> str:
 def main():
     """主程式"""
     print("\n" + "=" * 60)
-    print("🎨 數位墨水繪圖重建工具（支援橡皮擦）")
+    print("🎨 數位墨水繪圖重建工具（支援橡皮擦 + 清空畫布）")
     print("=" * 60 + "\n")
     
     # 在最開始就創建 QApplication
