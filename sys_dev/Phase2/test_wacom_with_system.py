@@ -107,27 +107,27 @@ class WacomDrawingCanvas(QWidget):
     def _on_stroke_completed_callback(self, stroke_data):
         """筆劃完成時的處理"""
         try:
-            stroke_id = stroke_data['stroke_id']
+            # ✅✅✅ 關鍵修復：使用 all_strokes 的長度作為實際的 stroke_id
+            actual_stroke_id = len(self.all_strokes)
             stroke_points = stroke_data['points']
             
-            self.logger.info(f"✅ Stroke {stroke_id} completed")
+            self.logger.info(f"✅ Stroke completed: original_id={stroke_data['stroke_id']}, actual_id={actual_stroke_id}")
             
             canvas_width = self.config.canvas_width
             canvas_height = self.config.canvas_height
             
-            # 🔧 關鍵修改：不減去工具欄高度（因為歸一化時已經處理）
             pixel_points = [
                 (
                     p.x * canvas_width, 
-                    p.y * canvas_height,  # ← 不減去 50
+                    p.y * canvas_height,
                     p.pressure
                 )
                 for p in stroke_points
             ]
             
-            # 創建元數據
+            # 創建元數據（使用實際的 stroke_id）
             metadata = StrokeMetadata(
-                stroke_id=stroke_id,
+                stroke_id=actual_stroke_id,  # ← 使用實際 ID
                 tool_type=ToolType.PEN,
                 timestamp_start=stroke_data['start_time'],
                 timestamp_end=stroke_data['end_time'],
@@ -138,14 +138,14 @@ class WacomDrawingCanvas(QWidget):
             
             # 添加到 all_strokes
             self.all_strokes.append({
-                'stroke_id': stroke_id,
+                'stroke_id': actual_stroke_id,  # ← 使用實際 ID
                 'tool_type': ToolType.PEN,
                 'points': pixel_points,
                 'metadata': metadata,
                 'is_deleted': False
             })
             
-            self.logger.info(f"📝 筆劃已保存: stroke_id={stroke_id}, points={len(pixel_points)}")
+            self.logger.info(f"📝 筆劃已保存: stroke_id={actual_stroke_id}, points={len(pixel_points)}")
             
             # ✅✅✅ 立即重繪畫布
             self.update()
@@ -154,8 +154,6 @@ class WacomDrawingCanvas(QWidget):
             self.logger.error(f"❌ 處理筆劃完成回調時出錯: {e}")
             import traceback
             self.logger.error(traceback.format_exc())
-
-
 
     
     def _setup_toolbar(self):
@@ -201,17 +199,71 @@ class WacomDrawingCanvas(QWidget):
         self.setLayout(main_layout)
     
     def switch_tool(self, tool_type: ToolType):
-        """切換工具"""
-        self.current_tool = tool_type
-        
-        if tool_type == ToolType.PEN:
-            self.pen_button.setStyleSheet("background-color: lightblue;")
-            self.eraser_button.setStyleSheet("")
-            self.logger.info("✅ 切換到筆工具")
-        else:
-            self.eraser_button.setStyleSheet("background-color: lightblue;")
-            self.pen_button.setStyleSheet("")
-            self.logger.info("✅ 切換到橡皮擦")
+        """切換工具（添加切換事件記錄）"""
+        try:
+            # 記錄工具切換前的狀態
+            from_tool = self.current_tool.value
+            to_tool = tool_type.value
+            
+            self.logger.info(f"🔄 準備切換工具: {from_tool} → {to_tool}")
+            
+            # 🆕🆕🆕 關鍵修復：切換工具前強制完成當前筆劃
+            if self.current_tool == ToolType.PEN and tool_type != ToolType.PEN:
+                # 從筆切換到其他工具
+                if self.pen_is_touching and self.current_stroke_points:
+                    self.logger.info("🔄 切換工具前強制完成當前筆劃")
+                    
+                    if self.last_point_data is not None:
+                        # 發送終點（壓力=0）
+                        final_point = self.last_point_data.copy()
+                        final_point['pressure'] = 0.0
+                        final_point['timestamp'] = self.lsl.stream_manager.get_stream_time()
+                        
+                        self.ink_system.process_raw_point(final_point)
+                        
+                        # 等待處理完成
+                        import time
+                        time.sleep(0.05)
+            
+            # 🆕🆕🆕 記錄工具切換事件
+            self.lsl.mark_tool_switch(from_tool, to_tool)
+            
+            # 清理所有狀態
+            self.current_stroke_points = []
+            self.current_eraser_points = []
+            self.last_point_data = None
+            self.pen_is_touching = False
+            self.current_pressure = 0.0
+            
+            # 清理 PointProcessor 的歷史緩存
+            if hasattr(self.ink_system, 'point_processor'):
+                self.ink_system.point_processor.clear_history()
+            
+            # 強制重置 StrokeDetector 狀態
+            if hasattr(self.ink_system, 'stroke_detector'):
+                from StrokeDetector import StrokeState
+                self.ink_system.stroke_detector.current_state = StrokeState.IDLE
+                self.ink_system.stroke_detector.current_stroke_points = []
+                self.logger.info("🔄 StrokeDetector 狀態已重置為 IDLE")
+            
+            # 切換工具
+            self.current_tool = tool_type
+            
+            if tool_type == ToolType.PEN:
+                self.pen_button.setStyleSheet("background-color: lightblue;")
+                self.eraser_button.setStyleSheet("")
+                self.logger.info("✅ 切換到筆工具")
+            else:
+                self.eraser_button.setStyleSheet("background-color: lightblue;")
+                self.pen_button.setStyleSheet("")
+                self.logger.info("✅ 切換到橡皮擦")
+            
+        except Exception as e:
+            self.logger.error(f"❌ 切換工具失敗: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
+
+
     
     def _handle_pen_input(self, x_pixel, y_pixel, x_normalized, y_normalized, current_pressure, event):
         """處理筆輸入"""
@@ -335,6 +387,13 @@ class WacomDrawingCanvas(QWidget):
                         self.current_deleted_stroke_ids = set()
                     self.pen_is_touching = False
                     self.current_pressure = 0.0
+                    
+                    # 🆕🆕🆕 關鍵修復：清空 last_point_data
+                    self.last_point_data = None
+                    
+                    # 🆕🆕🆕 清理 PointProcessor 歷史
+                    if hasattr(self.ink_system, 'point_processor'):
+                        self.ink_system.point_processor.clear_history()
             
         except Exception as e:
             self.logger.error(f"❌ 處理橡皮擦輸入失敗: {e}")

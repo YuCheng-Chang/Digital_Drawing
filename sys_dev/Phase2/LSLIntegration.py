@@ -158,6 +158,30 @@ class LSLIntegration:
         except Exception as e:
             self.logger.error(f"Error processing ink point: {e}")
 
+    def mark_tool_switch(self, from_tool: str, to_tool: str):
+        """
+        記錄工具切換事件
+        
+        Args:
+            from_tool: 切換前的工具
+            to_tool: 切換後的工具
+        """
+        if not self.is_active:
+            return
+        
+        try:
+            timestamp = self.stream_manager.get_stream_time()
+            marker = f"tool_switch|from:{from_tool}|to:{to_tool}"
+            
+            self.stream_manager.push_marker(marker, timestamp)
+            self.data_recorder.record_marker(timestamp, marker)
+            
+            self.logger.info(f"🔄 工具切換事件已記錄: {from_tool} → {to_tool}")
+            
+        except Exception as e:
+            self.logger.error(f"Error marking tool switch: {e}")
+
+
     def mark_eraser_stroke(self, 
                           eraser_id: int,
                           deleted_stroke_ids: List[int],

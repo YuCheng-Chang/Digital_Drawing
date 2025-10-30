@@ -1,7 +1,10 @@
 """
-LSL Data Recorder
+LSL Data Recorder with Extended Time-Range Based Cleaning
 
 負責記錄 LSL 串流數據並儲存到檔案
+自動清理規則：
+1. stroke_start → tool_switch|from:pen|to:eraser
+2. stroke_start → tool_switch|from:pen|to:pen
 """
 
 import time
@@ -38,9 +41,12 @@ class MarkerEvent:
 
 class LSLDataRecorder:
     """
-    LSL 數據記錄器
+    LSL 數據記錄器（擴展清理模式）
     
     記錄墨水數據和事件標記，並在串流結束時儲存到檔案
+    清理規則：
+    1. stroke_start → tool_switch|from:pen|to:eraser
+    2. stroke_start → tool_switch|from:pen|to:pen
     """
     
     def __init__(self, output_dir: str = "./lsl_recordings"):
@@ -194,9 +200,144 @@ class LSLDataRecorder:
         self.logger.info(f"Data saved successfully: {saved_files}")
         return saved_files
     
+    def _clean_invalid_strokes_extended(self, markers: List[MarkerEvent], ink_samples: List[InkSample]) -> tuple:
+        """
+        🆕 擴展版：支援兩種 invalid stroke 模式
+        
+        規則：
+        1. stroke_start → tool_switch|from:pen|to:eraser
+        2. stroke_start → tool_switch|from:pen|to:pen
+        
+        Args:
+            markers: 原始標記列表
+            ink_samples: 原始墨水點列表
+        
+        Returns:
+            tuple: (清理後的標記, 清理後的墨水點, 清理統計)
+        """
+        if not markers:
+            return markers, ink_samples, {}
+        
+        self.logger.info("🧹 開始清理（擴展模式：pen→eraser 和 pen→pen）...")
+        
+        # 按時間排序標記
+        sorted_markers = sorted(enumerate(markers), key=lambda x: x[1].timestamp)
+        
+        invalid_time_ranges = []  # 儲存需要刪除的時間範圍 [(start_time, end_time, stroke_id, reason), ...]
+        invalid_marker_indices = set()
+        
+        # 遍歷標記找出無效的 stroke_start 及其時間範圍
+        for i in range(len(sorted_markers)):
+            current_idx, current_marker = sorted_markers[i]
+            current_text = current_marker.marker_text
+            
+            # 檢查當前標記是否為 stroke_start
+            if current_text.startswith('stroke_start_'):
+                stroke_id = current_text.replace('stroke_start_', '')
+                stroke_start_time = current_marker.timestamp
+                
+                # 向前查找，找到下一個相關事件
+                found_invalid_tool_switch = False
+                invalid_reason = None
+                next_event_time = None
+                
+                # 查找後續事件
+                for j in range(i + 1, len(sorted_markers)):
+                    next_idx, next_marker = sorted_markers[j]
+                    next_text = next_marker.marker_text
+                    
+                    # 如果遇到 stroke_end，說明這是正常筆劃，跳出
+                    if next_text == f'stroke_end_{stroke_id}':
+                        break
+                    
+                    # 如果遇到另一個 stroke_start，記錄時間作為刪除範圍的結束點
+                    if next_text.startswith('stroke_start_'):
+                        next_event_time = next_marker.timestamp
+                        break
+                    
+                    # 🆕🆕🆕 檢查兩種 invalid tool_switch 模式
+                    if 'tool_switch' in next_text and 'from:pen' in next_text:
+                        # 模式 1: pen → eraser
+                        if 'to:eraser' in next_text:
+                            found_invalid_tool_switch = True
+                            invalid_reason = 'pen→eraser'
+                            # 不要 break，繼續找下一個 stroke_start 作為結束點
+                        
+                        # 模式 2: pen → pen
+                        elif 'to:pen' in next_text:
+                            found_invalid_tool_switch = True
+                            invalid_reason = 'pen→pen'
+                            # 不要 break，繼續找下一個 stroke_start 作為結束點
+                
+                # 如果找到 invalid tool_switch，記錄時間範圍
+                if found_invalid_tool_switch:
+                    # 如果沒有找到下一個 stroke_start，使用無窮大作為結束時間
+                    if next_event_time is None:
+                        next_event_time = float('inf')
+                    
+                    self.logger.info(f"🗑️ 發現無效筆劃: {current_text} (原因: {invalid_reason})")
+                    self.logger.info(f"   刪除時間範圍: {stroke_start_time:.3f} ~ {next_event_time:.3f}")
+                    
+                    invalid_time_ranges.append((stroke_start_time, next_event_time, stroke_id, invalid_reason))
+                    invalid_marker_indices.add(current_idx)
+        
+        # 清理標記（移除無效的 stroke_start）
+        cleaned_markers = []
+        for i, marker in enumerate(markers):
+            if i not in invalid_marker_indices:
+                cleaned_markers.append(marker)
+        
+        # 清理墨水點（基於時間範圍刪除）
+        cleaned_ink_samples = []
+        removed_samples_count = 0
+        removal_reasons = {'pen→eraser': 0, 'pen→pen': 0}
+        
+        for sample in ink_samples:
+            should_remove = False
+            removal_reason = None
+            
+            # 檢查是否在任何無效時間範圍內
+            for start_time, end_time, stroke_id, reason in invalid_time_ranges:
+                # 只刪除在時間範圍內且 stroke_id 匹配的墨水點
+                if start_time <= sample.timestamp < end_time and str(sample.stroke_id) == stroke_id:
+                    should_remove = True
+                    removal_reason = reason
+                    self.logger.debug(f"   刪除墨水點: timestamp={sample.timestamp:.3f}, stroke_id={sample.stroke_id}, 原因={reason}")
+                    break
+            
+            if not should_remove:
+                cleaned_ink_samples.append(sample)
+            else:
+                removed_samples_count += 1
+                if removal_reason:
+                    removal_reasons[removal_reason] += 1
+        
+        # 統計結果
+        removed_markers = len(invalid_marker_indices)
+        
+        cleaning_stats = {
+            'invalid_time_ranges': len(invalid_time_ranges),
+            'removed_markers': removed_markers,
+            'removed_ink_samples': removed_samples_count,
+            'removal_by_reason': removal_reasons,
+            'remaining_markers': len(cleaned_markers),
+            'remaining_ink_samples': len(cleaned_ink_samples)
+        }
+        
+        self.logger.info(f"✅ 清理完成:")
+        self.logger.info(f"   - 無效時間範圍: {cleaning_stats['invalid_time_ranges']} 個")
+        self.logger.info(f"   - 移除標記: {cleaning_stats['removed_markers']} 個")
+        self.logger.info(f"   - 移除墨水點: {cleaning_stats['removed_ink_samples']} 個")
+        self.logger.info(f"     • pen→eraser: {removal_reasons['pen→eraser']} 個")
+        self.logger.info(f"     • pen→pen: {removal_reasons['pen→pen']} 個")
+        self.logger.info(f"   - 剩餘標記: {cleaning_stats['remaining_markers']} 個")
+        self.logger.info(f"   - 剩餘墨水點: {cleaning_stats['remaining_ink_samples']} 個")
+        
+        return cleaned_markers, cleaned_ink_samples, cleaning_stats
+    
     def _save_data(self) -> Dict[str, str]:
         """
-        儲存數據到檔案
+        儲存數據到檔案（含擴展清理功能）
         
         Returns:
             Dict: 儲存的檔案路徑
@@ -206,35 +347,52 @@ class LSLDataRecorder:
         
         saved_files = {}
         
-        # 1. 儲存墨水數據（CSV 格式）
+        # 🆕🆕🆕 在保存前使用擴展清理
+        cleaned_markers, cleaned_ink_samples, cleaning_stats = self._clean_invalid_strokes_extended(
+            self.markers, self.ink_samples
+        )
+        
+        # 1. 儲存清理後的墨水數據（CSV 格式）
         ink_csv_path = session_dir / "ink_data.csv"
-        self._save_ink_data_csv(ink_csv_path)
+        self._save_ink_data_csv_cleaned(ink_csv_path, cleaned_ink_samples)
         saved_files['ink_csv'] = str(ink_csv_path)
         
-        # 2. 儲存墨水數據（JSON 格式）
+        # 2. 儲存清理後的墨水數據（JSON 格式）
         ink_json_path = session_dir / "ink_data.json"
-        self._save_ink_data_json(ink_json_path)
+        self._save_ink_data_json_cleaned(ink_json_path, cleaned_ink_samples)
         saved_files['ink_json'] = str(ink_json_path)
         
-        # 3. 儲存事件標記（CSV 格式）
+        # 3. 儲存清理後的事件標記（CSV 格式）
         markers_csv_path = session_dir / "markers.csv"
-        self._save_markers_csv(markers_csv_path)
+        self._save_markers_csv_cleaned(markers_csv_path, cleaned_markers)
         saved_files['markers_csv'] = str(markers_csv_path)
         
-        # 4. 儲存元數據
+        # 🆕🆕🆕 4. 同時儲存原始數據（用於調試）
+        if len(cleaned_markers) != len(self.markers) or len(cleaned_ink_samples) != len(self.ink_samples):
+            raw_markers_path = session_dir / "markers_raw.csv"
+            self._save_markers_csv_raw(raw_markers_path)
+            saved_files['markers_raw'] = str(raw_markers_path)
+            
+            raw_ink_path = session_dir / "ink_data_raw.csv"
+            self._save_ink_data_csv_raw(raw_ink_path)
+            saved_files['ink_data_raw'] = str(raw_ink_path)
+            
+            self.logger.info("💾 已同時保存原始數據（用於調試）")
+        
+        # 5. 儲存元數據
         metadata_path = session_dir / "metadata.json"
-        self._save_metadata(metadata_path)
+        self._save_metadata_with_cleaning_stats(metadata_path, cleaning_stats)
         saved_files['metadata'] = str(metadata_path)
         
-        # 5. 儲存統計摘要
+        # 6. 儲存統計摘要
         summary_path = session_dir / "summary.txt"
-        self._save_summary(summary_path)
+        self._save_summary_with_cleaning_stats(summary_path, cleaned_markers, cleaned_ink_samples, cleaning_stats)
         saved_files['summary'] = str(summary_path)
         
         return saved_files
     
-    def _save_ink_data_csv(self, filepath: Path):
-        """儲存墨水數據為 CSV"""
+    def _save_ink_data_csv_cleaned(self, filepath: Path, cleaned_samples: List[InkSample]):
+        """儲存清理後的墨水數據為 CSV"""
         with open(filepath, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             
@@ -245,7 +403,66 @@ class LSLDataRecorder:
                 'stroke_id', 'event_type'
             ])
             
-            # 寫入數據
+            # 寫入清理後的數據
+            for sample in cleaned_samples:
+                writer.writerow([
+                    f"{sample.timestamp:.6f}",
+                    f"{sample.x:.6f}",
+                    f"{sample.y:.6f}",
+                    f"{sample.pressure:.6f}",
+                    f"{sample.tilt_x:.3f}",
+                    f"{sample.tilt_y:.3f}",
+                    f"{sample.velocity:.3f}",
+                    sample.stroke_id,
+                    sample.event_type
+                ])
+    
+    def _save_ink_data_json_cleaned(self, filepath: Path, cleaned_samples: List[InkSample]):
+        """儲存清理後的墨水數據為 JSON"""
+        data = {
+            'session_id': self.session_id,
+            'samples': [asdict(sample) for sample in cleaned_samples],
+            'data_cleaned': True,
+            'cleaning_method': 'time_range_based_extended',
+            'cleaning_rules': [
+                'stroke_start → tool_switch|from:pen|to:eraser (delete by time range)',
+                'stroke_start → tool_switch|from:pen|to:pen (delete by time range)'
+            ],
+            'original_sample_count': len(self.ink_samples),
+            'cleaned_sample_count': len(cleaned_samples)
+        }
+        
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2)
+    
+    def _save_markers_csv_cleaned(self, filepath: Path, cleaned_markers: List[MarkerEvent]):
+        """儲存清理後的事件標記為 CSV"""
+        with open(filepath, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            
+            # 寫入標頭
+            writer.writerow(['timestamp', 'marker_text'])
+            
+            # 寫入清理後的數據
+            for marker in cleaned_markers:
+                writer.writerow([
+                    f"{marker.timestamp:.6f}",
+                    marker.marker_text
+                ])
+    
+    def _save_ink_data_csv_raw(self, filepath: Path):
+        """儲存原始墨水數據為 CSV（調試用）"""
+        with open(filepath, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            
+            # 寫入標頭
+            writer.writerow([
+                'timestamp', 'x', 'y', 'pressure',
+                'tilt_x', 'tilt_y', 'velocity',
+                'stroke_id', 'event_type'
+            ])
+            
+            # 寫入原始數據
             for sample in self.ink_samples:
                 writer.writerow([
                     f"{sample.timestamp:.6f}",
@@ -259,41 +476,48 @@ class LSLDataRecorder:
                     sample.event_type
                 ])
     
-    def _save_ink_data_json(self, filepath: Path):
-        """儲存墨水數據為 JSON"""
-        data = {
-            'session_id': self.session_id,
-            'samples': [asdict(sample) for sample in self.ink_samples]
-        }
-        
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2)
-    
-    def _save_markers_csv(self, filepath: Path):
-        """儲存事件標記為 CSV"""
+    def _save_markers_csv_raw(self, filepath: Path):
+        """儲存原始事件標記為 CSV（調試用）"""
         with open(filepath, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             
             # 寫入標頭
             writer.writerow(['timestamp', 'marker_text'])
             
-            # 寫入數據
+            # 寫入原始數據
             for marker in self.markers:
                 writer.writerow([
                     f"{marker.timestamp:.6f}",
                     marker.marker_text
                 ])
     
-    def _save_metadata(self, filepath: Path):
-        """儲存元數據"""
+    def _save_metadata_with_cleaning_stats(self, filepath: Path, cleaning_stats: Dict):
+        """儲存包含清理統計的元數據"""
+        # 添加清理統計到元數據
+        self.metadata['data_cleaning'] = {
+            'removed_markers': cleaning_stats.get('removed_markers', 0),
+            'removed_ink_samples': cleaning_stats.get('removed_ink_samples', 0),
+            'removal_by_reason': cleaning_stats.get('removal_by_reason', {}),
+            'cleaning_enabled': True,
+            'cleaning_method': 'time_range_based_extended',
+            'cleaning_rules': [
+                'stroke_start → tool_switch|from:pen|to:eraser (delete by time range)',
+                'stroke_start → tool_switch|from:pen|to:pen (delete by time range)'
+            ],
+            'cleaning_timestamp': datetime.now().isoformat()
+        }
+        
         with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(self.metadata, f, indent=2)
     
-    def _save_summary(self, filepath: Path):
-        """儲存統計摘要"""
+    def _save_summary_with_cleaning_stats(self, filepath: Path, 
+                                         cleaned_markers: List[MarkerEvent], 
+                                         cleaned_ink_samples: List[InkSample],
+                                         cleaning_stats: Dict):
+        """儲存包含清理統計的摘要"""
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write("=" * 80 + "\n")
-            f.write("LSL Recording Summary\n")
+            f.write("LSL Recording Summary (Extended Time-Range Based Cleaned Data)\n")
             f.write("=" * 80 + "\n\n")
             
             f.write(f"Session ID: {self.session_id}\n")
@@ -301,59 +525,42 @@ class LSLDataRecorder:
             f.write(f"Recording End: {self.metadata['recording_end']}\n")
             f.write(f"Duration: {self.metadata['recording_duration']:.2f} seconds\n\n")
             
-            f.write(f"Total Ink Samples: {len(self.ink_samples)}\n")
-            f.write(f"Total Markers: {len(self.markers)}\n\n")
+            # 🆕🆕🆕 擴展清理統計
+            removal_reasons = cleaning_stats.get('removal_by_reason', {})
             
-            # 計算統計資訊
-            if len(self.ink_samples) > 0:
-                timestamps = [s.timestamp for s in self.ink_samples]
-                pressures = [s.pressure for s in self.ink_samples]
-                velocities = [s.velocity for s in self.ink_samples]
+            f.write("Data Cleaning Summary:\n")
+            f.write(f"  Cleaning Method: Time-Range Based (Extended)\n")
+            f.write(f"  Cleaning Rules:\n")
+            f.write(f"    1. stroke_start → tool_switch|from:pen|to:eraser (delete by time range)\n")
+            f.write(f"    2. stroke_start → tool_switch|from:pen|to:pen (delete by time range)\n")
+            f.write(f"  Original Markers: {len(self.markers)}\n")
+            f.write(f"  Cleaned Markers: {len(cleaned_markers)}\n")
+            f.write(f"  Removed Markers: {cleaning_stats.get('removed_markers', 0)}\n")
+            f.write(f"  Original Ink Samples: {len(self.ink_samples)}\n")
+            f.write(f"  Cleaned Ink Samples: {len(cleaned_ink_samples)}\n")
+            f.write(f"  Removed Ink Samples: {cleaning_stats.get('removed_ink_samples', 0)}\n")
+            f.write(f"    • pen→eraser: {removal_reasons.get('pen→eraser', 0)} samples\n")
+            f.write(f"    • pen→pen: {removal_reasons.get('pen→pen', 0)} samples\n\n")
+            
+            f.write(f"Final Data Counts:\n")
+            f.write(f"  Total Ink Samples: {len(cleaned_ink_samples)}\n")
+            f.write(f"  Total Markers: {len(cleaned_markers)}\n\n")
+            
+            # 計算統計資訊（使用清理後的數據）
+            if len(cleaned_ink_samples) > 0:
+                timestamps = [s.timestamp for s in cleaned_ink_samples]
+                pressures = [s.pressure for s in cleaned_ink_samples]
                 
-                f.write("Ink Data Statistics:\n")
+                f.write("Cleaned Ink Data Statistics:\n")
                 f.write(f"  Time range: {min(timestamps):.3f} - {max(timestamps):.3f} s\n")
-                f.write(f"  Average sampling rate: {len(self.ink_samples) / (max(timestamps) - min(timestamps)):.1f} Hz\n")
+                f.write(f"  Average sampling rate: {len(cleaned_ink_samples) / (max(timestamps) - min(timestamps)):.1f} Hz\n")
                 f.write(f"  Pressure range: {min(pressures):.3f} - {max(pressures):.3f}\n")
-                f.write(f"  Average pressure: {np.mean(pressures):.3f}\n")
-                
-                # 🆕🆕🆕 速度統計（過濾異常值）
-                # 只統計有效速度（排除 0 和異常高速）
-                valid_velocities = [v for v in velocities if v > 0]
-                
-                if valid_velocities:
-                    # 設定合理速度上限（5000 px/s）
-                    max_reasonable_velocity = 5000.0
-                    filtered_velocities = [v for v in valid_velocities if v <= max_reasonable_velocity]
-                    outlier_velocities = [v for v in valid_velocities if v > max_reasonable_velocity]
-                    
-                    if filtered_velocities:
-                        avg_velocity = np.mean(filtered_velocities)
-                        max_velocity = max(filtered_velocities)
-                        
-                        f.write(f"  Average velocity: {avg_velocity:.1f} px/s\n")
-                        f.write(f"  Max velocity: {max_velocity:.1f} px/s\n")
-                        
-                        # 如果有異常值，顯示統計
-                        if outlier_velocities:
-                            f.write(f"  (Filtered {len(outlier_velocities)} outlier velocities > {max_reasonable_velocity:.0f} px/s)\n")
-                            f.write(f"  (Outlier range: {min(outlier_velocities):.1f} - {max(outlier_velocities):.1f} px/s)\n")
-                    else:
-                        # 所有速度都是異常值
-                        f.write(f"  Average velocity: N/A (all velocities are outliers)\n")
-                        f.write(f"  Max velocity: N/A\n")
-                        f.write(f"  (All {len(valid_velocities)} velocities > {max_reasonable_velocity:.0f} px/s)\n")
-                else:
-                    # 沒有有效速度
-                    f.write(f"  Average velocity: 0.0 px/s\n")
-                    f.write(f"  Max velocity: 0.0 px/s\n")
-                
-                f.write("\n")
-
+                f.write(f"  Average pressure: {np.mean(pressures):.3f}\n\n")
             
-            # 列出所有標記
-            if len(self.markers) > 0:
-                f.write("Event Markers:\n")
-                for marker in self.markers:
+            # 列出所有清理後的標記
+            if len(cleaned_markers) > 0:
+                f.write("Event Markers (Extended Time-Range Based Cleaned):\n")
+                for marker in cleaned_markers:
                     f.write(f"  [{marker.timestamp:.3f}] {marker.marker_text}\n")
     
     def get_recording_stats(self) -> Dict[str, Any]:
@@ -367,7 +574,12 @@ class LSLDataRecorder:
             'is_recording': self.is_recording,
             'session_id': self.session_id,
             'total_ink_samples': len(self.ink_samples),
-            'total_markers': len(self.markers)
+            'total_markers': len(self.markers),
+            'cleaning_method': 'time_range_based_extended',
+            'cleaning_rules': [
+                'stroke_start → tool_switch|from:pen|to:eraser (delete by time range)',
+                'stroke_start → tool_switch|from:pen|to:pen (delete by time range)'
+            ]
         }
         
         if self.recording_start_time:

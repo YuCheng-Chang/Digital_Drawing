@@ -38,7 +38,7 @@ class ProcessingConfig:
     min_stroke_points: int = 3                 # 最小筆劃點數
     min_stroke_duration: float = 0.05          # 最小筆劃持續時間：0.05秒
     max_stroke_duration: float = 30.0          # 最大筆劃持續時間：30秒
-    min_stroke_length: float = 5.0             # 最小筆劃長度：5像素
+    min_stroke_length: float = 2.0             # 最小筆劃長度：2像素
     max_stroke_length: float = 10000.0         # 最大筆劃長度：10000像素
     
     # ==================== 特徵計算參數 ====================
@@ -166,7 +166,7 @@ class ProcessingConfig:
             self.pause_duration_threshold = 0.3        # ✅ 0.3秒
             self.min_stroke_duration = 0.02            # ✅ 改為 0.02秒（原來是 0.05）
             self.max_stroke_duration = 30.0            # ✅ 30秒
-            self.min_stroke_length = 5              # ✅ 5像素
+            self.min_stroke_length = 2              # ✅ 2像素
             self.enable_tilt_processing = True
             self.target_sampling_rate = 200
             self.data_collection_rate = 200
@@ -378,7 +378,7 @@ class ProcessingConfig:
                 pressure_threshold=0.00,
                 min_stroke_duration=0.02,          # ✅ 改為 0.02 秒（降低閾值）
                 max_stroke_duration=30.0,          # ✅ 30 秒
-                min_stroke_length=5.0,             # ✅ 5 像素
+                min_stroke_length=2.0,             # ✅ 2 像素
                 enable_tilt_processing=True,
                 point_buffer_size=20000,
                 data_collection_rate=200,
