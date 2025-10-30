@@ -22,8 +22,8 @@ class ProcessingConfig:
     target_sampling_rate: int = 200
     
     # ==================== 畫布配置 ====================
-    canvas_width: int = 800
-    canvas_height: int = 600
+    canvas_width: int = 1800
+    canvas_height: int = 700
 
     # ==================== 處理參數 ====================
     smoothing_enabled: bool = False
