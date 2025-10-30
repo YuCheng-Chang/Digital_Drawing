@@ -208,6 +208,8 @@ class LSLDataRecorder:
         1. stroke_start → tool_switch|from:pen|to:eraser
         2. stroke_start → tool_switch|from:pen|to:pen
         
+        ✅✅✅ 保留所有 recording_start 事件（不刪除）
+        
         Args:
             markers: 原始標記列表
             ink_samples: 原始墨水點列表
@@ -220,6 +222,14 @@ class LSLDataRecorder:
         
         self.logger.info("🧹 開始清理（擴展模式：pen→eraser 和 pen→pen）...")
         
+        # ✅✅✅ 找到最後一個 recording_start 的時間戳
+        last_recording_start_time = None
+        for marker in reversed(markers):
+            if marker.marker_text == "recording_start":
+                last_recording_start_time = marker.timestamp
+                self.logger.info(f"✅ 找到最後一個 recording_start: {last_recording_start_time:.3f}")
+                break
+        
         # 按時間排序標記
         sorted_markers = sorted(enumerate(markers), key=lambda x: x[1].timestamp)
         
@@ -230,6 +240,17 @@ class LSLDataRecorder:
         for i in range(len(sorted_markers)):
             current_idx, current_marker = sorted_markers[i]
             current_text = current_marker.marker_text
+            
+            # ✅✅✅ 跳過 recording_start 事件（不刪除）
+            if current_text == "recording_start":
+                continue
+            
+            # ✅✅✅ 如果有最後一個 recording_start，只清理它之後的數據
+            if last_recording_start_time is not None:
+                if current_marker.timestamp < last_recording_start_time:
+                    # 這個標記在最後一次 recording_start 之前，標記為刪除
+                    invalid_marker_indices.add(current_idx)
+                    continue
             
             # 檢查當前標記是否為 stroke_start
             if current_text.startswith('stroke_start_'):
@@ -281,29 +302,36 @@ class LSLDataRecorder:
                     invalid_time_ranges.append((stroke_start_time, next_event_time, stroke_id, invalid_reason))
                     invalid_marker_indices.add(current_idx)
         
-        # 清理標記（移除無效的 stroke_start）
+        # 清理標記（移除無效的 stroke_start 和 recording_start 之前的標記）
         cleaned_markers = []
         for i, marker in enumerate(markers):
             if i not in invalid_marker_indices:
                 cleaned_markers.append(marker)
         
-        # 清理墨水點（基於時間範圍刪除）
+        # ✅✅✅ 清理墨水點（基於時間範圍刪除 + 刪除 recording_start 之前的點）
         cleaned_ink_samples = []
         removed_samples_count = 0
-        removal_reasons = {'pen→eraser': 0, 'pen→pen': 0}
+        removal_reasons = {'pen→eraser': 0, 'pen→pen': 0, 'before_recording_start': 0}
         
         for sample in ink_samples:
             should_remove = False
             removal_reason = None
             
-            # 檢查是否在任何無效時間範圍內
-            for start_time, end_time, stroke_id, reason in invalid_time_ranges:
-                # 只刪除在時間範圍內且 stroke_id 匹配的墨水點
-                if start_time <= sample.timestamp < end_time and str(sample.stroke_id) == stroke_id:
+            # ✅✅✅ 如果有最後一個 recording_start，刪除它之前的所有墨水點
+            if last_recording_start_time is not None:
+                if sample.timestamp < last_recording_start_time:
                     should_remove = True
-                    removal_reason = reason
-                    self.logger.debug(f"   刪除墨水點: timestamp={sample.timestamp:.3f}, stroke_id={sample.stroke_id}, 原因={reason}")
-                    break
+                    removal_reason = 'before_recording_start'
+            
+            # 檢查是否在任何無效時間範圍內
+            if not should_remove:
+                for start_time, end_time, stroke_id, reason in invalid_time_ranges:
+                    # 只刪除在時間範圍內且 stroke_id 匹配的墨水點
+                    if start_time <= sample.timestamp < end_time and str(sample.stroke_id) == stroke_id:
+                        should_remove = True
+                        removal_reason = reason
+                        self.logger.debug(f"   刪除墨水點: timestamp={sample.timestamp:.3f}, stroke_id={sample.stroke_id}, 原因={reason}")
+                        break
             
             if not should_remove:
                 cleaned_ink_samples.append(sample)
@@ -321,7 +349,8 @@ class LSLDataRecorder:
             'removed_ink_samples': removed_samples_count,
             'removal_by_reason': removal_reasons,
             'remaining_markers': len(cleaned_markers),
-            'remaining_ink_samples': len(cleaned_ink_samples)
+            'remaining_ink_samples': len(cleaned_ink_samples),
+            'last_recording_start_time': last_recording_start_time
         }
         
         self.logger.info(f"✅ 清理完成:")
@@ -330,10 +359,12 @@ class LSLDataRecorder:
         self.logger.info(f"   - 移除墨水點: {cleaning_stats['removed_ink_samples']} 個")
         self.logger.info(f"     • pen→eraser: {removal_reasons['pen→eraser']} 個")
         self.logger.info(f"     • pen→pen: {removal_reasons['pen→pen']} 個")
+        self.logger.info(f"     • before_recording_start: {removal_reasons['before_recording_start']} 個")
         self.logger.info(f"   - 剩餘標記: {cleaning_stats['remaining_markers']} 個")
         self.logger.info(f"   - 剩餘墨水點: {cleaning_stats['remaining_ink_samples']} 個")
         
         return cleaned_markers, cleaned_ink_samples, cleaning_stats
+
     
     def _save_data(self) -> Dict[str, str]:
         """
@@ -367,17 +398,20 @@ class LSLDataRecorder:
         self._save_markers_csv_cleaned(markers_csv_path, cleaned_markers)
         saved_files['markers_csv'] = str(markers_csv_path)
         
-        # 🆕🆕🆕 4. 同時儲存原始數據（用於調試）
+        # ✅✅✅ 修復：總是儲存原始數據（移除條件判斷）
+        raw_markers_path = session_dir / "markers_raw.csv"
+        self._save_markers_csv_raw(raw_markers_path)
+        saved_files['markers_raw'] = str(raw_markers_path)
+        
+        raw_ink_path = session_dir / "ink_data_raw.csv"
+        self._save_ink_data_csv_raw(raw_ink_path)
+        saved_files['ink_data_raw'] = str(raw_ink_path)
+        
+        # 記錄是否有數據被清理
         if len(cleaned_markers) != len(self.markers) or len(cleaned_ink_samples) != len(self.ink_samples):
-            raw_markers_path = session_dir / "markers_raw.csv"
-            self._save_markers_csv_raw(raw_markers_path)
-            saved_files['markers_raw'] = str(raw_markers_path)
-            
-            raw_ink_path = session_dir / "ink_data_raw.csv"
-            self._save_ink_data_csv_raw(raw_ink_path)
-            saved_files['ink_data_raw'] = str(raw_ink_path)
-            
-            self.logger.info("💾 已同時保存原始數據（用於調試）")
+            self.logger.info("💾 已保存原始數據（有數據被清理）")
+        else:
+            self.logger.info("💾 已保存原始數據（沒有數據被清理，但仍保存用於對比）")
         
         # 5. 儲存元數據
         metadata_path = session_dir / "metadata.json"
@@ -390,7 +424,7 @@ class LSLDataRecorder:
         saved_files['summary'] = str(summary_path)
         
         return saved_files
-    
+
     def _save_ink_data_csv_cleaned(self, filepath: Path, cleaned_samples: List[InkSample]):
         """儲存清理後的墨水數據為 CSV"""
         with open(filepath, 'w', newline='', encoding='utf-8') as f:
