@@ -202,11 +202,12 @@ class LSLDataRecorder:
     
     def _clean_invalid_strokes_extended(self, markers: List[MarkerEvent], ink_samples: List[InkSample]) -> tuple:
         """
-        🆕 擴展版：支援兩種 invalid stroke 模式
+        🆕 擴展版：支援兩種 invalid stroke 模式 + 去除重複的 stroke_start
         
-        規則：
+        清理規則：
         1. stroke_start → tool_switch|from:pen|to:eraser
         2. stroke_start → tool_switch|from:pen|to:pen
+        3. 🆕 去除重複的 stroke_start_X 事件（保留第一個）
         
         ✅✅✅ 保留所有 recording_start 事件（不刪除）
         
@@ -220,7 +221,7 @@ class LSLDataRecorder:
         if not markers:
             return markers, ink_samples, {}
         
-        self.logger.info("🧹 開始清理（擴展模式：pen→eraser 和 pen→pen）...")
+        self.logger.info("🧹 開始清理（擴展模式：pen→eraser、pen→pen + 去重）...")
         
         # ✅✅✅ 找到最後一個 recording_start 的時間戳
         last_recording_start_time = None
@@ -229,6 +230,32 @@ class LSLDataRecorder:
                 last_recording_start_time = marker.timestamp
                 self.logger.info(f"✅ 找到最後一個 recording_start: {last_recording_start_time:.3f}")
                 break
+        
+        # 🆕🆕🆕 步驟 1：去除重複的 stroke_start
+        deduplicated_markers = []
+        seen_stroke_starts = set()  # 記錄已經見過的 stroke_start_X
+        duplicate_count = 0
+        
+        for marker in markers:
+            marker_text = marker.marker_text
+            
+            # 檢查是否為 stroke_start
+            if marker_text.startswith('stroke_start_'):
+                if marker_text in seen_stroke_starts:
+                    # 重複的 stroke_start，跳過
+                    duplicate_count += 1
+                    self.logger.info(f"🗑️ 移除重複的標記: {marker_text} at {marker.timestamp:.3f}")
+                    continue
+                else:
+                    # 第一次見到，記錄並保留
+                    seen_stroke_starts.add(marker_text)
+            
+            deduplicated_markers.append(marker)
+        
+        self.logger.info(f"✅ 去重完成，移除 {duplicate_count} 個重複的 stroke_start 標記")
+        
+        # 🆕🆕🆕 步驟 2：使用去重後的標記進行後續清理
+        markers = deduplicated_markers
         
         # 按時間排序標記
         sorted_markers = sorted(enumerate(markers), key=lambda x: x[1].timestamp)
@@ -350,10 +377,12 @@ class LSLDataRecorder:
             'removal_by_reason': removal_reasons,
             'remaining_markers': len(cleaned_markers),
             'remaining_ink_samples': len(cleaned_ink_samples),
-            'last_recording_start_time': last_recording_start_time
+            'last_recording_start_time': last_recording_start_time,
+            'duplicate_stroke_starts_removed': duplicate_count  # 🆕 新增統計
         }
         
         self.logger.info(f"✅ 清理完成:")
+        self.logger.info(f"   - 重複 stroke_start 移除: {duplicate_count} 個")  # 🆕
         self.logger.info(f"   - 無效時間範圍: {cleaning_stats['invalid_time_ranges']} 個")
         self.logger.info(f"   - 移除標記: {cleaning_stats['removed_markers']} 個")
         self.logger.info(f"   - 移除墨水點: {cleaning_stats['removed_ink_samples']} 個")
@@ -364,6 +393,7 @@ class LSLDataRecorder:
         self.logger.info(f"   - 剩餘墨水點: {cleaning_stats['remaining_ink_samples']} 個")
         
         return cleaned_markers, cleaned_ink_samples, cleaning_stats
+
 
     
     def _save_data(self) -> Dict[str, str]:
@@ -532,9 +562,11 @@ class LSLDataRecorder:
             'removed_markers': cleaning_stats.get('removed_markers', 0),
             'removed_ink_samples': cleaning_stats.get('removed_ink_samples', 0),
             'removal_by_reason': cleaning_stats.get('removal_by_reason', {}),
+            'duplicate_stroke_starts_removed': cleaning_stats.get('duplicate_stroke_starts_removed', 0),  # 🆕
             'cleaning_enabled': True,
-            'cleaning_method': 'time_range_based_extended',
+            'cleaning_method': 'time_range_based_extended_with_deduplication',  # 🆕
             'cleaning_rules': [
+                'Remove duplicate stroke_start_X markers (keep first occurrence)',  # 🆕
                 'stroke_start → tool_switch|from:pen|to:eraser (delete by time range)',
                 'stroke_start → tool_switch|from:pen|to:pen (delete by time range)'
             ],
@@ -543,6 +575,7 @@ class LSLDataRecorder:
         
         with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(self.metadata, f, indent=2)
+
     
     def _save_summary_with_cleaning_stats(self, filepath: Path, 
                                          cleaned_markers: List[MarkerEvent], 
