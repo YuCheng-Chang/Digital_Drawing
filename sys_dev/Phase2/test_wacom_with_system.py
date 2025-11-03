@@ -553,10 +553,13 @@ class WacomDrawingCanvas(QWidget):
     def closeEvent(self, event):
         """視窗關閉時的處理"""
         try:
-            self.logger.info("🔚 Canvas closing...")
+            self.logger.info("=" * 60)
+            self.logger.info("🔚 開始關閉程序")
+            self.logger.info("=" * 60)
             
             from StrokeDetector import StrokeState
             
+            # 1. 檢查並完成未完成的筆劃
             is_stroke_active = (
                 hasattr(self.ink_system, 'stroke_detector') and 
                 self.ink_system.stroke_detector.current_state in [StrokeState.ACTIVE, StrokeState.STARTING]
@@ -580,20 +583,6 @@ class WacomDrawingCanvas(QWidget):
                 
                 self.ink_system.process_raw_point(final_point)
                 time.sleep(0.1)
-            else:
-                reasons = []
-                if not is_stroke_active:
-                    reasons.append("系統無活動筆劃")
-                if not self.current_stroke_points:
-                    reasons.append("沒有未完成的點")
-                if self.last_point_data is None:
-                    reasons.append("無最後點數據")
-                if not self.pen_is_touching:
-                    reasons.append("筆未接觸屏幕")
-                if self.current_pressure <= 0:
-                    reasons.append("壓力為0")
-                
-                self.logger.info(f"🔚 跳過強制完成筆劃: {', '.join(reasons)}")
             
             # 2. 處理已完成但未處理的筆劃
             if hasattr(self.ink_system, 'stroke_detector'):
@@ -619,9 +608,20 @@ class WacomDrawingCanvas(QWidget):
                         })
                     
                     time.sleep(0.2)
-                    self.logger.info("✅ 特徵計算處理完成")
             
-            # 3. 匯出畫布圖片
+            # 🆕🆕🆕 3. 輸出最終統計（在關閉日誌前）
+            self.logger.info("=" * 60)
+            self.logger.info("📈 最終統計")
+            self.logger.info("=" * 60)
+            
+            stats = self.ink_system.get_processing_statistics()
+            self.logger.info(f"總筆劃數: {stats.get('total_strokes', 0)}")
+            self.logger.info(f"總原始點數: {stats.get('total_raw_points', 0)}")
+            self.logger.info(f"總處理點數: {stats.get('total_processed_points', 0)}")
+            self.logger.info(f"平均採樣率: {stats.get('raw_points_per_second', 0):.1f} 點/秒")
+            self.logger.info("=" * 60)
+            
+            # 4. 匯出畫布圖片
             if hasattr(self, 'lsl') and self.lsl is not None:
                 try:
                     output_dir = os.path.join(self.lsl.data_recorder.output_dir, self.lsl.data_recorder.session_id)
@@ -640,7 +640,7 @@ class WacomDrawingCanvas(QWidget):
                     import traceback
                     self.logger.error(traceback.format_exc())
             
-            # 4. 停止 LSL 並儲存數據
+            # 5. 停止 LSL 並儲存數據
             if hasattr(self, 'lsl') and self.lsl is not None:
                 self.logger.info("🔚 Stopping LSL and saving data...")
                 try:
@@ -651,32 +651,44 @@ class WacomDrawingCanvas(QWidget):
                 except Exception as e:
                     self.logger.error(f"❌ Error stopping LSL: {e}")
             
-            # 5. 停止墨水處理系統
+            # 6. 停止墨水處理系統
             if self.ink_system:
                 self.logger.info("Stopping ink processing system...")
                 self.ink_system.stop_processing()
                 self.ink_system.shutdown()
                 self.logger.info("Ink processing system stopped")
             
-            # ✅✅✅ 6. 關閉日誌文件處理器
+            # 7. 最後的日誌消息
+            self.logger.info("=" * 60)
+            self.logger.info("✅ 程序已安全關閉")
+            self.logger.info("=" * 60)
+            
+            # ✅✅✅ 8. 刷新並關閉日誌文件處理器
             if hasattr(self, 'log_file_path'):
                 self.logger.info(f"✅ 完整日誌已保存到: {self.log_file_path}")
                 
-                # 關閉所有文件處理器
+                # 刷新所有處理器
                 root_logger = logging.getLogger()
+                for handler in root_logger.handlers:
+                    handler.flush()
+                
+                # 等待寫入完成
+                time.sleep(0.1)
+                
+                # 關閉文件處理器
                 for handler in root_logger.handlers[:]:
                     if isinstance(handler, logging.FileHandler):
                         handler.close()
                         root_logger.removeHandler(handler)
             
             event.accept()
-            self.logger.info("Canvas closed successfully")
             
         except Exception as e:
             self.logger.error(f"❌ Error during close: {e}")
             import traceback
             self.logger.error(traceback.format_exc())
             event.accept()
+
 
     def enterEvent(self, event):
         """筆進入畫布區域時觸發"""
@@ -1041,7 +1053,6 @@ def test_wacom_with_full_system():
     print(f"  - 總原始點數: {stats.get('total_raw_points', 0)}")
     print(f"  - 總處理點數: {stats.get('total_processed_points', 0)}")
     print(f"  - 平均採樣率: {stats.get('raw_points_per_second', 0):.1f} 點/秒")
-    
     ink_system.shutdown()
     print("\n✅ 測試完成")
 
