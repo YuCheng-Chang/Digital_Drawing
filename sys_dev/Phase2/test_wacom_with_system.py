@@ -12,6 +12,12 @@ from DigitalInkDataStructure import ToolType, StrokeMetadata
 from EraserTool import EraserTool
 import os
 
+# ✅✅✅ 配置日誌（在創建 LSL 之前暫時使用基本配置）
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
 class WacomDrawingCanvas(QWidget):
     def __init__(self, ink_system, config: ProcessingConfig):
         super().__init__()
@@ -20,7 +26,7 @@ class WacomDrawingCanvas(QWidget):
         
         # 基本屬性
         self.current_stroke_points = []
-        self.all_strokes = []  # ← 這個會被修改為字典格式
+        self.all_strokes = []
         self.stroke_count = 0
         self.total_points = 0
         self.logger = logging.getLogger('WacomDrawingCanvas')
@@ -32,10 +38,10 @@ class WacomDrawingCanvas(QWidget):
         self.current_pressure = 0.0
         
         # 🆕🆕🆕 橡皮擦相關
-        self.current_tool = ToolType.PEN  # 當前工具
-        self.eraser_tool = EraserTool(radius=20.0)  # 橡皮擦工具
-        self.current_eraser_points = []  # 當前橡皮擦軌跡
-        self.next_stroke_id = 0  # 筆劃 ID 計數器
+        self.current_tool = ToolType.PEN
+        self.eraser_tool = EraserTool(radius=20.0)
+        self.current_eraser_points = []
+        self.next_stroke_id = 0
         
         # 畫布設置
         canvas_width = config.canvas_width
@@ -43,13 +49,13 @@ class WacomDrawingCanvas(QWidget):
         
         # 🆕🆕🆕 修改窗口佈局（添加工具欄）
         self.setWindowTitle("Wacom 繪圖測試")
-        self.setGeometry(100, 100, canvas_width, canvas_height + 50)  # ← 增加高度容納工具欄
+        self.setGeometry(100, 100, canvas_width, canvas_height + 50)
         self.setMouseTracking(True)
         
         # 🆕🆕🆕 設置工具欄
         self._setup_toolbar()
         
-        # LSL 整合（保持不變）
+        # LSL 整合
         from LSLIntegration import LSLIntegration, LSLStreamConfig
         
         lsl_config = LSLStreamConfig(
@@ -65,8 +71,10 @@ class WacomDrawingCanvas(QWidget):
             output_dir="./wacom_recordings"
         )
         
+        session_id = f"wacom_test_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        
         self.lsl.start(
-            session_id=f"wacom_test_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+            session_id=session_id,
             metadata={
                 'experiment': 'wacom_drawing_test',
                 'screen_resolution': f"{canvas_width}x{canvas_height}",
@@ -74,6 +82,9 @@ class WacomDrawingCanvas(QWidget):
                 'canvas_height': canvas_height
             }
         )
+        
+        # ✅✅✅ 關鍵修改：在 LSL 啟動後，重新配置 logging 並添加文件處理器
+        self._setup_logging_to_file(session_id)
 
         self.ink_system.set_time_source(self.lsl.stream_manager.get_stream_time)
         self.logger.info("✅ 墨水系統時間源已設置為 LSL 時間")
@@ -89,6 +100,41 @@ class WacomDrawingCanvas(QWidget):
             self._on_stroke_completed_callback
         )
 
+    def _setup_logging_to_file(self, session_id: str):
+        """
+        🆕🆕🆕 設置日誌輸出到文件（保存到 LSL 的 output_dir）
+        """
+        try:
+            # 獲取 LSL 的輸出目錄
+            output_dir = os.path.join(self.lsl.data_recorder.output_dir, session_id)
+            
+            # 確保目錄存在
+            os.makedirs(output_dir, exist_ok=True)
+            
+            # 創建日誌文件路徑
+            log_filename = os.path.join(output_dir, "system_log.txt")
+            
+            # 創建文件處理器
+            file_handler = logging.FileHandler(log_filename, encoding='utf-8')
+            file_handler.setLevel(logging.DEBUG)
+            
+            # 設置格式
+            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            file_handler.setFormatter(formatter)
+            
+            # 添加到根 logger（這樣所有 logger 都會輸出到文件）
+            root_logger = logging.getLogger()
+            root_logger.addHandler(file_handler)
+            
+            self.logger.info(f"✅ 日誌已配置輸出到: {log_filename}")
+            
+            # 🆕🆕🆕 保存日誌文件路徑（用於後續引用）
+            self.log_file_path = log_filename
+            
+        except Exception as e:
+            self.logger.error(f"❌ 設置日誌文件失敗: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
 
     
     def _on_point_processed_callback(self, point_data):
@@ -127,7 +173,7 @@ class WacomDrawingCanvas(QWidget):
             
             # 創建元數據（使用實際的 stroke_id）
             metadata = StrokeMetadata(
-                stroke_id=actual_stroke_id,  # ← 使用實際 ID
+                stroke_id=actual_stroke_id,
                 tool_type=ToolType.PEN,
                 timestamp_start=stroke_data['start_time'],
                 timestamp_end=stroke_data['end_time'],
@@ -138,7 +184,7 @@ class WacomDrawingCanvas(QWidget):
             
             # 添加到 all_strokes
             self.all_strokes.append({
-                'stroke_id': actual_stroke_id,  # ← 使用實際 ID
+                'stroke_id': actual_stroke_id,
                 'tool_type': ToolType.PEN,
                 'points': pixel_points,
                 'metadata': metadata,
@@ -164,7 +210,7 @@ class WacomDrawingCanvas(QWidget):
         # 🖊️ 筆工具按鈕
         self.pen_button = QPushButton("🖊️ 筆")
         self.pen_button.setFixedSize(100, 40)
-        self.pen_button.setStyleSheet("background-color: lightblue;")  # 預設選中
+        self.pen_button.setStyleSheet("background-color: lightblue;")
         self.pen_button.clicked.connect(lambda: self.switch_tool(ToolType.PEN))
         toolbar_layout.addWidget(self.pen_button)
         
@@ -180,7 +226,6 @@ class WacomDrawingCanvas(QWidget):
         clear_button.clicked.connect(self.clear_canvas)
         toolbar_layout.addWidget(clear_button)
         
-        
         # 添加彈性空間
         toolbar_layout.addStretch()
         
@@ -192,7 +237,7 @@ class WacomDrawingCanvas(QWidget):
         # 創建主佈局
         main_layout = QVBoxLayout()
         main_layout.addWidget(toolbar_widget)
-        main_layout.addStretch()  # 畫布區域
+        main_layout.addStretch()
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
         
@@ -263,7 +308,6 @@ class WacomDrawingCanvas(QWidget):
             import traceback
             self.logger.error(traceback.format_exc())
 
-
     
     def _handle_pen_input(self, x_pixel, y_pixel, x_normalized, y_normalized, current_pressure, event):
         """處理筆輸入"""
@@ -323,17 +367,11 @@ class WacomDrawingCanvas(QWidget):
         except Exception as e:
             self.logger.error(f"❌ 處理筆輸入失敗: {e}")
 
-
     
     def _handle_eraser_input(self, x_pixel, y_pixel, current_pressure, event):
         """處理橡皮擦輸入"""
         try:
-            # ✅✅✅ 關鍵修改：不再減去工具欄高度（已在 tabletEvent 中處理）
-            # toolbar_height = 50
-            # adjusted_y = y_pixel - toolbar_height  # ← 移除這行
-            
             if current_pressure > 0:
-                # ✅ 直接使用傳入的 y_pixel（已經是調整後的座標）
                 self.current_eraser_points.append((x_pixel, y_pixel))
                 
                 # 🆕🆕🆕 初始化被刪除的筆劃 ID 集合
@@ -341,7 +379,7 @@ class WacomDrawingCanvas(QWidget):
                     self.current_deleted_stroke_ids = set()
                 
                 # 即時檢測碰撞並標記刪除
-                eraser_point = (x_pixel, y_pixel)  # ← 直接使用 y_pixel
+                eraser_point = (x_pixel, y_pixel)
                 for stroke in self.all_strokes:
                     if stroke['is_deleted']:
                         continue
@@ -363,7 +401,7 @@ class WacomDrawingCanvas(QWidget):
                     # 🆕🆕🆕 獲取被刪除的筆劃 ID
                     deleted_stroke_ids = list(getattr(self, 'current_deleted_stroke_ids', set()))
                     
-                    # 🆕🆕🆕 記錄到 LSL（即使沒有通過 EraserTool）
+                    # 🆕🆕🆕 記錄到 LSL
                     if deleted_stroke_ids:
                         timestamp = self.lsl.stream_manager.get_stream_time()
                         eraser_id = len(self.eraser_tool.eraser_history)
@@ -400,14 +438,10 @@ class WacomDrawingCanvas(QWidget):
             import traceback
             self.logger.error(traceback.format_exc())
 
-
-
     def clear_canvas(self):
         """清空畫布"""
         try:
             self.logger.info("🗑️ 準備清空畫布...")
-            
-            # ✅✅✅ 關鍵修復：清理所有狀態（類似 switch_tool）
             
             # 1. 清空畫布數據
             self.all_strokes = []
@@ -433,26 +467,23 @@ class WacomDrawingCanvas(QWidget):
                 from StrokeDetector import StrokeState
                 self.ink_system.stroke_detector.current_state = StrokeState.IDLE
                 self.ink_system.stroke_detector.current_stroke_points = []
-                self.ink_system.stroke_detector.current_stroke_id = 0  # ← 🆕 重置 stroke_id
+                self.ink_system.stroke_detector.current_stroke_id = 0
                 self.logger.info("🧹 已重置 StrokeDetector 狀態為 IDLE，stroke_id=0")
             
             # 🆕🆕🆕 5. 清空 LSL 記錄的墨水點和標記
             if hasattr(self, 'lsl') and self.lsl is not None:
-                # 清空 LSL 記錄器的緩衝區
                 self.lsl.data_recorder.ink_samples.clear()
                 self.lsl.data_recorder.markers.clear()
                 
-                # 重置 stroke_id
                 self.lsl.current_stroke_id = 0
                 self.lsl._stroke_has_started = False
                 
                 self.logger.info("🧹 已清空 LSL 記錄緩衝區，stroke_id 重置為 0")
             
-            # 🆕🆕🆕 6. 記錄清空事件（作為新的 recording_start）
+            # 🆕🆕🆕 6. 記錄清空事件
             if hasattr(self, 'lsl') and self.lsl is not None:
                 timestamp = self.lsl.stream_manager.get_stream_time()
                 
-                # ✅✅✅ 關鍵修復：記錄為 recording_start 事件
                 self.lsl.stream_manager.push_marker("recording_start", timestamp)
                 self.lsl.data_recorder.record_marker(timestamp, "recording_start")
                 
@@ -483,7 +514,6 @@ class WacomDrawingCanvas(QWidget):
             painter = QPainter(pixmap)
             painter.setRenderHint(QPainter.Antialiasing)
             
-            # ✅✅✅ 繪製筆劃
             pen = QPen(QColor(0, 0, 0), 2)
             painter.setPen(pen)
             
@@ -496,7 +526,6 @@ class WacomDrawingCanvas(QWidget):
                     x1, y1, p1 = points[i]
                     x2, y2, p2 = points[i + 1]
                     
-                    # 🔧🔧🔧 關鍵修改:直接使用像素座標(已經減去工具欄高度)
                     width = 1 + p1 * 5
                     pen.setWidthF(width)
                     painter.setPen(pen)
@@ -520,7 +549,6 @@ class WacomDrawingCanvas(QWidget):
             import traceback
             self.logger.error(traceback.format_exc())
             return False
-
 
     def closeEvent(self, event):
         """視窗關閉時的處理"""
@@ -546,7 +574,6 @@ class WacomDrawingCanvas(QWidget):
                 self.logger.info(f"   - 當前筆劃點數: {len(self.current_stroke_points)}")
                 self.logger.info(f"   - 當前壓力: {self.current_pressure:.3f}")
                 
-                # ✅ 使用已經歸一化的座標
                 final_point = self.last_point_data.copy()
                 final_point['pressure'] = 0.0
                 final_point['timestamp'] = self.lsl.stream_manager.get_stream_time()
@@ -594,20 +621,14 @@ class WacomDrawingCanvas(QWidget):
                     time.sleep(0.2)
                     self.logger.info("✅ 特徵計算處理完成")
             
-            # 🆕🆕🆕 3. 匯出畫布圖片（在停止 LSL 之前）
+            # 3. 匯出畫布圖片
             if hasattr(self, 'lsl') and self.lsl is not None:
                 try:
-                    # 獲取輸出目錄
-                    import os
                     output_dir = os.path.join(self.lsl.data_recorder.output_dir, self.lsl.data_recorder.session_id)
-                    
-                    # 確保目錄存在
                     os.makedirs(output_dir, exist_ok=True)
                     
-                    # 生成檔案名
                     canvas_image_path = os.path.join(output_dir, "canvas_drawing.png")
                     
-                    # 匯出畫布
                     self.logger.info("🎨 匯出畫布圖片...")
                     if self.export_canvas_image(canvas_image_path):
                         self.logger.info(f"✅ 畫布已保存: {canvas_image_path}")
@@ -637,6 +658,17 @@ class WacomDrawingCanvas(QWidget):
                 self.ink_system.shutdown()
                 self.logger.info("Ink processing system stopped")
             
+            # ✅✅✅ 6. 關閉日誌文件處理器
+            if hasattr(self, 'log_file_path'):
+                self.logger.info(f"✅ 完整日誌已保存到: {self.log_file_path}")
+                
+                # 關閉所有文件處理器
+                root_logger = logging.getLogger()
+                for handler in root_logger.handlers[:]:
+                    if isinstance(handler, logging.FileHandler):
+                        handler.close()
+                        root_logger.removeHandler(handler)
+            
             event.accept()
             self.logger.info("Canvas closed successfully")
             
@@ -646,24 +678,18 @@ class WacomDrawingCanvas(QWidget):
             self.logger.error(traceback.format_exc())
             event.accept()
 
-
-
     def enterEvent(self, event):
-        """
-        ✅✅✅ 筆進入畫布區域時觸發
-        """
+        """筆進入畫布區域時觸發"""
         try:
             self.logger.info(f"🚪 筆進入畫布區域 (當前壓力: {self.current_pressure:.3f})")
             
-            # 更新狀態
             self.pen_is_in_canvas = True
             
-            # ✅ 清理過舊的未完成筆劃（防止狀態混亂）
             if self.current_stroke_points and self.last_point_data is not None:
                 current_time = self.lsl.stream_manager.get_stream_time()
                 time_since_last_point = current_time - self.last_point_data['timestamp']
                 
-                if time_since_last_point > 1.0:  # 超過 1 秒
+                if time_since_last_point > 1.0:
                     self.logger.warning(f"⚠️ 清理舊筆劃（{time_since_last_point:.2f}s 前）")
                     self.current_stroke_points = []
                     self.last_point_data = None
@@ -677,63 +703,13 @@ class WacomDrawingCanvas(QWidget):
             self.logger.error(traceback.format_exc())
 
     def leaveEvent(self, event):
-        """
-        ✅✅✅ 筆離開畫布區域時觸發
-        """
+        """筆離開畫布區域時觸發"""
         try:
             self.logger.info(f"🚪 筆離開畫布區域 (當前壓力: {self.current_pressure:.3f})")
             
-            # 更新狀態
             self.pen_is_in_canvas = False
             
-            from StrokeDetector import StrokeState
-            
-            is_stroke_active = (
-                hasattr(self.ink_system, 'stroke_detector') and
-                self.ink_system.stroke_detector.current_state in [StrokeState.ACTIVE, StrokeState.STARTING]
-            )
-            
-            if (self.pen_is_touching and 
-                self.current_pressure > 0 and 
-                self.current_stroke_points and
-                is_stroke_active):
-                
-                self.logger.info("🔚 筆接觸屏幕時移出畫布，使用最後一個點作為筆劃終點")
-                
-                if self.last_point_data is not None:
-                    # ✅ 使用已經歸一化的座標
-                    final_point = self.last_point_data.copy()
-                    final_point['pressure'] = 0.0
-                    final_point['timestamp'] = self.lsl.stream_manager.get_stream_time()
-                    
-                    self.logger.info(
-                        f"🔚 發送終點: 歸一化=({final_point['x']:.3f}, {final_point['y']:.3f}), "
-                        f"pressure=0 (原壓力: {self.current_pressure:.3f})"
-                    )
-                    
-                    self.ink_system.process_raw_point(final_point)
-                    
-                    self.all_strokes.append(self.current_stroke_points.copy())
-                    self.current_stroke_points = []
-                    self.stroke_count += 1
-                    
-                    self.pen_is_touching = False
-                    self.current_pressure = 0.0
-                    self.last_point_data = None
-                    
-                    self.update()
-            else:
-                reason = []
-                if not self.pen_is_touching:
-                    reason.append("筆未接觸屏幕")
-                if self.current_pressure <= 0:
-                    reason.append("壓力為0")
-                if not self.current_stroke_points:
-                    reason.append("沒有未完成的筆劃")
-                if not is_stroke_active:
-                    reason.append("系統無活動筆劃")
-                
-                self.logger.debug(f"⏭️ 跳過處理: {', '.join(reason)}")
+            self._force_end_current_stroke()
             
             event.accept()
             
@@ -742,12 +718,62 @@ class WacomDrawingCanvas(QWidget):
             import traceback
             self.logger.error(traceback.format_exc())
 
-
-
-        
-    def tabletEvent(self, event):
-        """接收 Wacom 輸入事件（支持橡皮擦）"""
+    def _force_end_current_stroke(self):
+        """強制結束當前筆劃"""
         try:
+            from StrokeDetector import StrokeState
+            
+            has_active_stroke = (
+                hasattr(self.ink_system, 'stroke_detector') and
+                self.ink_system.stroke_detector.current_state in [StrokeState.ACTIVE, StrokeState.STARTING]
+            )
+            
+            has_unfinished_points = (
+                self.current_stroke_points and
+                self.last_point_data is not None
+            )
+            
+            if has_active_stroke and has_unfinished_points:
+                self.logger.info(
+                    f"🔚 強制結束筆劃: stroke_id={self.ink_system.stroke_detector.current_stroke_id}, "
+                    f"points={len(self.current_stroke_points)}"
+                )
+                
+                final_point = self.last_point_data.copy()
+                final_point['pressure'] = 0.0
+                final_point['timestamp'] = self.lsl.stream_manager.get_stream_time()
+                
+                self.ink_system.process_raw_point(final_point)
+                
+                import time
+                time.sleep(0.05)
+            
+            self.current_stroke_points = []
+            self.last_point_data = None
+            self.pen_is_touching = False
+            self.current_pressure = 0.0
+            
+            if hasattr(self.ink_system, 'point_processor'):
+                self.ink_system.point_processor.clear_history()
+                self.logger.info("🧹 已清空 PointProcessor 歷史緩存")
+            
+            if hasattr(self.ink_system, 'stroke_detector'):
+                self.ink_system.stroke_detector.force_reset_state()
+                self.logger.info("🧹 已強制重置 StrokeDetector 狀態")
+            
+            self.logger.info("✅ 筆劃已強制結束，所有狀態已清理")
+            
+        except Exception as e:
+            self.logger.error(f"❌ 強制結束筆劃失敗: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
+
+    def tabletEvent(self, event):
+        """接收 Wacom 輸入事件"""
+        try:
+            # ✅✅✅ 診斷日誌
+            self.logger.debug(f"🖊️ tabletEvent: pos=({event.x()}, {event.y()}), pressure={event.pressure():.3f}")
+            
             current_pressure = event.pressure()
             self.current_pressure = current_pressure
             
@@ -755,32 +781,37 @@ class WacomDrawingCanvas(QWidget):
             is_in_bounds = self.rect().contains(pos)
             
             if not is_in_bounds:
-                self.logger.debug(f"⏭️ 點在畫布外，跳過處理: ({pos.x()}, {pos.y()})")
+                self.logger.debug(f"⏭️ 筆移出畫布邊界: ({pos.x()}, {pos.y()})")
+                
+                if self.pen_is_touching or self.current_stroke_points:
+                    self.logger.info("🔚 筆移出畫布，強制結束當前筆劃")
+                    self._force_end_current_stroke()
+                
                 event.accept()
                 return
             
-            # 獲取像素座標
             x_pixel = event.x()
             y_pixel = event.y()
             
-            # 🔧 關鍵修改：先減去工具欄高度
             toolbar_height = 50
             canvas_width = self.config.canvas_width
             canvas_height = self.config.canvas_height
             
-            # 🆕🆕🆕 檢測是否在工具欄區域
             if y_pixel < toolbar_height:
                 self.logger.debug(f"⏭️ 點在工具欄區域，跳過墨水處理: ({x_pixel}, {y_pixel})")
+                
+                if self.pen_is_touching or self.current_stroke_points:
+                    self.logger.info("🔚 筆進入工具欄區域，強制結束當前筆劃")
+                    self._force_end_current_stroke()
+                
                 event.accept()
-                return  # ← 直接返回，不處理墨水
+                return
             
             adjusted_y = y_pixel - toolbar_height
             
-            # 基於調整後的座標進行歸一化
             x_normalized = x_pixel / canvas_width
             y_normalized = adjusted_y / canvas_height
             
-            # ✅✅✅ 關鍵修改：兩個工具都傳入調整後的座標
             if self.current_tool == ToolType.PEN:
                 self._handle_pen_input(x_pixel, adjusted_y, x_normalized, y_normalized, current_pressure, event)
             elif self.current_tool == ToolType.ERASER:
@@ -796,37 +827,33 @@ class WacomDrawingCanvas(QWidget):
             event.accept()
 
     def paintEvent(self, event):
-        """繪製筆劃(支持橡皮擦)"""
+        """繪製筆劃"""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         
-        # 🆕🆕🆕 計算工具欄偏移(避開工具欄)
         toolbar_height = 50
-        painter.translate(0, toolbar_height)  # ← 向下平移 50 像素
+        painter.translate(0, toolbar_height)
         
-        # 繪製未刪除的筆劃(黑色)
         pen = QPen(QColor(0, 0, 0), 2)
         painter.setPen(pen)
         
         for stroke in self.all_strokes:
             if stroke.get('is_deleted', False):
-                continue  # 跳過已刪除的筆劃
+                continue
             
             points = stroke['points']
             for i in range(len(points) - 1):
                 x1, y1, p1 = points[i]
                 x2, y2, p2 = points[i + 1]
                 
-                # 🔧🔧🔧 關鍵修改:不需要再減去工具欄高度(已經在保存時減去)
                 width = 1 + p1 * 5
                 pen.setWidthF(width)
                 painter.setPen(pen)
                 painter.drawLine(
-                    int(x1), int(y1),  # ← 直接使用保存的座標
+                    int(x1), int(y1),
                     int(x2), int(y2)
                 )
         
-        # 繪製當前筆劃（藍色）
         if self.current_tool == ToolType.PEN and self.current_stroke_points:
             pen = QPen(QColor(0, 100, 255), 2)
             painter.setPen(pen)
@@ -839,7 +866,6 @@ class WacomDrawingCanvas(QWidget):
                 painter.setPen(pen)
                 painter.drawLine(int(x1), int(y1), int(x2), int(y2))
         
-        # 🆕🆕🆕 繪製當前橡皮擦軌跡（半透明紅色圓圈）
         if self.current_tool == ToolType.ERASER and self.current_eraser_points:
             pen = QPen(QColor(255, 0, 0, 100), 2)
             painter.setPen(pen)
@@ -853,7 +879,6 @@ class WacomDrawingCanvas(QWidget):
                     int(self.eraser_tool.radius * 2)
                 )
         
-        # 統計資訊顯示（調整位置）
         painter.setPen(QPen(QColor(100, 100, 100)))
         
         if self.last_point_data:
@@ -874,10 +899,8 @@ class WacomDrawingCanvas(QWidget):
                 f"壓力: {self.current_pressure:.3f} | 位置: N/A"
             )
         
-        painter.drawText(10, 20, stats_text)  # ← Y 座標改回 20（因為已經平移了 50px）
+        painter.drawText(10, 20, stats_text)
 
-
-        
     def update_stats_display(self):
         """更新統計顯示"""
         self.setWindowTitle(
@@ -885,16 +908,12 @@ class WacomDrawingCanvas(QWidget):
         )
 
 
-
 def test_wacom_with_full_system():
-    """
-    完整的 Wacom + 墨水處理系統測試
-    """
+    """完整的 Wacom + 墨水處理系統測試"""
     print("=" * 60)
     print("🎨 Wacom 墨水處理系統完整測試")
     print("=" * 60)
     
-    # ✅ 創建配置（可以自定義畫布大小）
     config = ProcessingConfig(
         device_type="wacom",
         target_sampling_rate=200,
@@ -904,16 +923,13 @@ def test_wacom_with_full_system():
     
     print(f"\n📐 畫布配置: {config.canvas_width} x {config.canvas_height}")
     
-    # 創建墨水處理系統
     ink_system = InkProcessingSystem(config)
     
-    # 設備配置
     device_config = {
         'device_type': 'wacom',
         'sampling_rate': 200
     }
     
-    # 初始化系統
     print("\n🔧 初始化墨水處理系統...")
     if not ink_system.initialize(device_config):
         print("❌ 系統初始化失敗")
@@ -921,7 +937,6 @@ def test_wacom_with_full_system():
     
     print("✅ 系統初始化成功")
     
-    # 註冊回調函數
     def on_stroke_completed(data):
         """筆劃完成回調"""
         try:
@@ -933,12 +948,10 @@ def test_wacom_with_full_system():
             print(f"   - ID: {stroke_id}")
             print(f"   - 點數: {num_points}")
             
-            # 計算持續時間
             if points and len(points) >= 2:
                 duration = points[-1].timestamp - points[0].timestamp
                 print(f"   - 持續時間: {duration:.3f}s")
                 
-                # ✅ 計算像素長度
                 canvas_width = config.canvas_width
                 canvas_height = config.canvas_height
                 
@@ -985,7 +998,6 @@ def test_wacom_with_full_system():
             import traceback
             print(traceback.format_exc())
 
-    
     def on_error(data):
         print(f"\n❌ 錯誤: {data['error_type']}")
         print(f"   訊息: {data['message']}")
@@ -994,7 +1006,6 @@ def test_wacom_with_full_system():
     ink_system.register_callback('on_features_calculated', on_features_calculated)
     ink_system.register_callback('on_error', on_error)
     
-    # 啟動處理（使用外部輸入模式）
     print("\n🚀 啟動數據處理...")
     if not ink_system.start_processing(use_external_input=True):
         print("❌ 無法啟動處理")
@@ -1002,19 +1013,13 @@ def test_wacom_with_full_system():
 
     print("✅ 處理已啟動（外部輸入模式）")
 
-    
-    # ✅ 修改後
-    # ✅ 創建 GUI
     app = QApplication(sys.argv)
     canvas = WacomDrawingCanvas(ink_system, config)
 
-    # 🆕🆕🆕 注意：時間源已在 WacomDrawingCanvas.__init__() 中設置
-    # 這裡不需要額外操作，只是確認一下
     print("✅ LSL 時間源已設置")
 
     canvas.show()
 
-    
     print("\n" + "=" * 60)
     print("🎨 請在視窗中使用 Wacom 筆書寫")
     print("   - 筆劃會即時顯示")
@@ -1022,13 +1027,11 @@ def test_wacom_with_full_system():
     print("   - 關閉視窗即結束測試")
     print("=" * 60 + "\n")
     
-    # 運行應用
     try:
         app.exec_()
     except KeyboardInterrupt:
         print("\n⚠️  使用者中斷")
     
-    # 清理
     print("\n🛑 停止處理...")
     ink_system.stop_processing()
     
