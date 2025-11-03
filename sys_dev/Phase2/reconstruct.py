@@ -345,7 +345,7 @@ class InkDrawingReconstructor:
     
     def reconstruct_drawing(self, strokes: dict, output_path: str) -> bool:
         """
-        重建繪圖並保存為 PNG
+        重建繪圖並保存為 PNG（支援單點筆畫 + 極短筆畫 + 處理壓力為0的結束點）
         
         Args:
             strokes: 筆劃字典 {stroke_id: [(x, y, pressure), ...]}
@@ -381,30 +381,77 @@ class InkDrawingReconstructor:
             for stroke_id in sorted(strokes.keys()):
                 stroke = strokes[stroke_id]
                 
-                if len(stroke) < 2:
-                    logger.warning(f"⚠️ 筆劃 {stroke_id} 只有 {len(stroke)} 個點，跳過")
+                if len(stroke) == 0:
+                    logger.warning(f"⚠️ 筆劃 {stroke_id} 沒有點，跳過")
                     continue
                 
-                # 繪製線段
-                for i in range(len(stroke) - 1):
-                    x1, y1, p1 = stroke[i]
-                    x2, y2, p2 = stroke[i + 1]
+                # ✅✅✅ 計算筆劃的平均壓力（排除壓力為0的點）
+                pressures = [p for _, _, p in stroke if p > 0]
+                if pressures:
+                    avg_pressure = sum(pressures) / len(pressures)
+                else:
+                    # 如果所有點的壓力都是0，使用預設值
+                    avg_pressure = 0.5
+                
+                # ✅✅✅ 計算筆劃的實際移動距離
+                all_x = [x for x, _, _ in stroke]
+                all_y = [y for _, y, _ in stroke]
+                x_range = max(all_x) - min(all_x)
+                y_range = max(all_y) - min(all_y)
+                max_distance = max(x_range, y_range)
+                
+                # ✅✅✅ 如果筆劃移動距離 < 3 像素，視為單點筆畫
+                if max_distance < 3.0:
+                    # 計算中心點（使用所有點的平均座標）
+                    center_x = sum(all_x) / len(all_x)
+                    center_y = sum(all_y) / len(all_y)
                     
-                    # 使用與 test_wacom_with_system.py 相同的寬度公式
-                    width = 1 + p1 * 5
+                    # 使用平均壓力計算寬度
+                    width = max(3.0, 1 + avg_pressure * 5)
                     
                     # 設置畫筆
                     pen = QPen(QColor(0, 0, 0))  # 黑色
                     pen.setWidthF(width)
                     pen.setCapStyle(Qt.RoundCap)
-                    pen.setJoinStyle(Qt.RoundJoin)
                     painter.setPen(pen)
                     
-                    # 繪製線段
-                    painter.drawLine(
-                        int(x1), int(y1),
-                        int(x2), int(y2)
-                    )
+                    # 繪製一個點
+                    painter.drawPoint(int(center_x), int(center_y))
+                    
+                    logger.info(f"✅ 繪製極短筆畫（視為點）: stroke_id={stroke_id}, "
+                            f"pos=({center_x:.1f}, {center_y:.1f}), "
+                            f"width={width:.1f}, "
+                            f"max_distance={max_distance:.2f}px, "
+                            f"points={len(stroke)}")
+                
+                else:
+                    # ✅ 正常筆畫：繪製線段
+                    logger.info(f"✅ 繪製正常筆畫: stroke_id={stroke_id}, "
+                            f"points={len(stroke)}, "
+                            f"distance={max_distance:.1f}px")
+                    
+                    for i in range(len(stroke) - 1):
+                        x1, y1, p1 = stroke[i]
+                        x2, y2, p2 = stroke[i + 1]
+                        
+                        # ✅✅✅ 使用平均壓力來計算寬度
+                        if p1 > 0:
+                            width = max(2.0, 1 + p1 * 5)
+                        else:
+                            width = max(2.0, 1 + avg_pressure * 5)
+                        
+                        # 設置畫筆
+                        pen = QPen(QColor(0, 0, 0))  # 黑色
+                        pen.setWidthF(width)
+                        pen.setCapStyle(Qt.RoundCap)
+                        pen.setJoinStyle(Qt.RoundJoin)
+                        painter.setPen(pen)
+                        
+                        # 繪製線段
+                        painter.drawLine(
+                            int(x1), int(y1),
+                            int(x2), int(y2)
+                        )
             
             painter.end()
             
@@ -428,6 +475,8 @@ class InkDrawingReconstructor:
             import traceback
             logger.error(traceback.format_exc())
             return False
+
+
 
     
     def process(self, csv_path: str, output_path: str = None) -> bool:

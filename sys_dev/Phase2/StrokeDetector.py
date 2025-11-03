@@ -56,6 +56,7 @@ class StrokeDetector:
         self.reset_state()
         self.logger.info("✅ 筆劃檢測器已關閉")
 
+
     def add_point(self, point: ProcessedInkPoint) -> None:
         try:
             self.logger.info(
@@ -73,6 +74,8 @@ class StrokeDetector:
                     )
                     self.current_state = StrokeState.IDLE
                 
+                # 🆕🆕🆕 新增：檢查是否為新筆劃的第一個點
+                # 如果當前狀態是 IDLE，或者距離上一個點時間過長，開始新筆劃
                 if self.current_state == StrokeState.IDLE:
                     # 🎨 開始新筆劃
                     self.current_state = StrokeState.ACTIVE
@@ -80,12 +83,41 @@ class StrokeDetector:
                     self.current_stroke_points = [point]
                     self.detection_stats['strokes_detected'] += 1
                     self.logger.info(f"🎨 筆劃開始: stroke_id={self.current_stroke_id}")
+                
+                # 🆕🆕🆕 新增：檢查時間間隔，防止跨筆劃污染
+                elif self.current_stroke_points:
+                    last_point = self.current_stroke_points[-1]
+                    time_gap = point.timestamp - last_point.timestamp
+                    
+                    # 如果時間間隔超過閾值（例如 0.5 秒），認為是新筆劃
+                    if time_gap > 0.5:
+                        self.logger.warning(
+                            f"⚠️ 檢測到異常時間間隔: {time_gap:.3f}s，"
+                            f"強制完成當前筆劃並開始新筆劃"
+                        )
+                        
+                        # 完成當前筆劃
+                        self.finalize_current_stroke()
+                        
+                        # 開始新筆劃
+                        self.current_state = StrokeState.ACTIVE
+                        point.stroke_id = self.current_stroke_id
+                        self.current_stroke_points = [point]
+                        self.detection_stats['strokes_detected'] += 1
+                        self.logger.info(f"🎨 新筆劃開始: stroke_id={self.current_stroke_id}")
+                    else:
+                        # ✅ 繼續當前筆劃
+                        point.stroke_id = self.current_stroke_id
+                        self.current_stroke_points.append(point)
+                        self.detection_stats['total_points'] += 1
+                        self.logger.debug(f"➕ 添加點到筆劃: stroke_id={self.current_stroke_id}, total_points={len(self.current_stroke_points)}")
                 else:
-                    # ✅ 繼續當前筆劃
+                    # 狀態異常，重置
+                    self.logger.warning("⚠️ 狀態異常，重置並開始新筆劃")
+                    self.current_state = StrokeState.ACTIVE
                     point.stroke_id = self.current_stroke_id
-                    self.current_stroke_points.append(point)
-                    self.detection_stats['total_points'] += 1
-                    self.logger.debug(f"➕ 添加點到筆劃: stroke_id={self.current_stroke_id}, total_points={len(self.current_stroke_points)}")
+                    self.current_stroke_points = [point]
+                    self.detection_stats['strokes_detected'] += 1
             
             else:
                 # 🔚 壓力 = 0：筆劃結束
@@ -135,27 +167,29 @@ class StrokeDetector:
                     # ⚠️ 不遞增 stroke_id，因為這個筆劃根本不存在
                     return
             
-            # ✅ 驗證筆劃
-            if self.validate_stroke(self.current_stroke_points):
-                # ✅ 保存完成的筆劃
-                self.completed_strokes.append({
-                    'stroke_id': stroke_id,
-                    'points': self.current_stroke_points.copy(),
-                    'start_time': self.current_stroke_points[0].timestamp,
-                    'end_time': self.current_stroke_points[-1].timestamp,
-                    'num_points': num_points
-                })
-                self.logger.info(f"✅ 筆劃完成並保存: stroke_id={stroke_id}, points={num_points}")
+            # ✅ 驗證筆劃（但不影響保存）
+            is_valid = self.validate_stroke(self.current_stroke_points)
+            
+            # ✅✅✅ 無論驗證結果如何，都保存筆劃
+            self.completed_strokes.append({
+                'stroke_id': stroke_id,
+                'points': self.current_stroke_points.copy(),
+                'start_time': self.current_stroke_points[0].timestamp,
+                'end_time': self.current_stroke_points[-1].timestamp,
+                'num_points': num_points,
+                'is_valid': is_valid  # 🆕 添加驗證標記
+            })
+            
+            if is_valid:
+                self.logger.info(f"✅ 筆劃完成並保存（驗證通過）: stroke_id={stroke_id}, points={num_points}")
                 self.detection_stats['strokes_validated'] += 1
-                
-                # ✅ 關鍵修復：立即遞增 stroke_id
-                self.current_stroke_id += 1
-                self.logger.info(f"🔄 stroke_id 已遞增，下一筆將使用: {self.current_stroke_id}")
             else:
-                self.logger.warning(f"❌ 筆劃驗證失敗: stroke_id={stroke_id}, points={num_points}")
+                self.logger.warning(f"⚠️ 筆劃完成並保存（驗證失敗）: stroke_id={stroke_id}, points={num_points}")
                 self.detection_stats['strokes_rejected'] += 1
-                # ✅ 驗證失敗時也遞增（避免 ID 衝突）
-                self.current_stroke_id += 1
+            
+            # ✅ 關鍵修復：立即遞增 stroke_id
+            self.current_stroke_id += 1
+            self.logger.info(f"🔄 stroke_id 已遞增，下一筆將使用: {self.current_stroke_id}")
             
             # ✅ 清空當前筆劃
             self.current_stroke_points = []

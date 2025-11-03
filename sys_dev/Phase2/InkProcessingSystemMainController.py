@@ -42,8 +42,8 @@ class InkProcessingSystem:
         self.raw_point_buffer = self.buffer_manager.create_point_buffer(10000)
         self.processed_point_buffer = self.buffer_manager.create_point_buffer(10000)
         self.stroke_buffer = self.buffer_manager.create_stroke_buffer(1000)
-        # ✅✅✅ 移除 feature_buffer（不再需要）
-        # self.feature_buffer = queue.Queue(maxsize=500)
+        # 🆕🆕🆕 添加鎖來保護 StrokeDetector 的狀態
+        self._stroke_detector_lock = threading.Lock()
 
         # 處理執行緒
         self.processing_threads = []
@@ -230,6 +230,8 @@ class InkProcessingSystem:
             self.is_processing = False
             return False
 
+# InkProcessingSystemMainController.py
+
     def process_raw_point(self, point_data: Dict[str, Any]) -> bool:
         """
         處理外部輸入的原始點（用於 PyQt5 集成）
@@ -248,52 +250,117 @@ class InkProcessingSystem:
                 button_state=point_data.get('button_state', 0)
             )
             
-            # ✅✅✅ 處理壓力為 0 的情況（筆劃結束）
-            if raw_point.pressure == 0.0:
-                if self.stroke_detector.current_state in [StrokeState.ACTIVE, StrokeState.STARTING, StrokeState.ENDING]:
-                    self.logger.info(
-                        f"🔚 檢測到筆離開屏幕（壓力=0），強制完成當前筆劃 "
-                        f"(stroke_id={self.stroke_detector.current_stroke_id})"
-                    )
-                    self.stroke_detector.finalize_current_stroke()
+            # ✅✅✅ 使用鎖保護整個處理流程
+            with self._stroke_detector_lock:
+                # 🔚 處理筆劃結束（壓力 = 0）
+                if raw_point.pressure == 0.0:
+                    if self.stroke_detector.current_state in [StrokeState.ACTIVE, StrokeState.STARTING, StrokeState.ENDING]:
+                        self.logger.info(
+                            f"🔚 檢測到筆離開屏幕（壓力=0），強制完成當前筆劃 "
+                            f"(stroke_id={self.stroke_detector.current_stroke_id})"
+                        )
+                        
+                        # ✅ 處理點
+                        processed_point = self.point_processor.process_point(raw_point)
+                        
+                        if processed_point:
+                            # ✅ 立即添加到檢測器並完成筆劃
+                            self.stroke_detector.add_point(processed_point)
+                            
+                            # ✅ 立即獲取完成的筆劃並觸發回調
+                            completed_strokes = self.stroke_detector.get_completed_strokes()
+                            
+                            for stroke_data in completed_strokes:
+                                stroke_points = stroke_data['points']
+                                stroke_id = stroke_data['stroke_id']
+                                
+                                # 加入筆劃緩衝區
+                                self.stroke_buffer.append(stroke_data)
+                                self.processing_stats['total_strokes'] += 1
+                                
+                                # 觸發筆劃完成回調
+                                self._trigger_callback('on_stroke_completed', {
+                                    'stroke_id': stroke_id,
+                                    'points': stroke_points,
+                                    'num_points': len(stroke_points),
+                                    'start_time': stroke_data['start_time'],
+                                    'end_time': stroke_data['end_time'],
+                                    'timestamp': self._get_timestamp()
+                                })
+                                
+                                # 觸發結束點回調
+                                if stroke_points:
+                                    last_point = stroke_points[-1]
+                                    self._trigger_callback('on_point_processed', {
+                                        'x': last_point.x,
+                                        'y': last_point.y,
+                                        'pressure': 0.0,
+                                        'tilt_x': last_point.tilt_x,
+                                        'tilt_y': last_point.tilt_y,
+                                        'velocity': last_point.velocity,
+                                        'timestamp': last_point.timestamp,
+                                        'stroke_id': stroke_id,
+                                        'is_stroke_start': False,
+                                        'is_stroke_end': True
+                                    })
+                                
+                                # 清空歷史緩存
+                                if hasattr(self.point_processor, 'clear_history'):
+                                    self.point_processor.clear_history()
+                            
+                            self.processing_stats['total_raw_points'] += 1
+                            self.processing_stats['total_processed_points'] += 1
+                            self.processing_stats['last_activity_time'] = self._get_timestamp()
+                    
+                    return True
                 
-                # ✅ 關鍵修改：不再直接 return False
-                # 結束點的處理由 _stroke_detection_loop() 中的回調完成
-                return True  # ← 改為 True，表示已處理
-            
-            # ✅ 處理壓力 > 0 的點（正常流程）
-            # 直接處理點
-            processed_point = self.point_processor.process_point(raw_point)
-            
-            if processed_point is None:
-                self.logger.debug(
-                    f"點被過濾: pressure={raw_point.pressure:.3f} < "
-                    f"threshold={self.config.pressure_threshold}"
-                )
-                return False
-            
-            # 加入處理後的點緩衝區
-            try:
-                self.processed_point_buffer.put_nowait(processed_point)
+                # ✅ 處理壓力 > 0 的點（正常流程）
+                processed_point = self.point_processor.process_point(raw_point)
+                
+                if processed_point is None:
+                    self.logger.debug(
+                        f"點被過濾: pressure={raw_point.pressure:.3f} < "
+                        f"threshold={self.config.pressure_threshold}"
+                    )
+                    return False
+                
+                # ✅ 立即添加到檢測器
+                old_points_count = len(self.stroke_detector.current_stroke_points)
+                self.stroke_detector.add_point(processed_point)
+                
+                # ✅ 判斷是否為筆劃開始
+                is_stroke_start = (old_points_count == 0 and 
+                                len(self.stroke_detector.current_stroke_points) == 1)
+                
+                # ✅ 更新 point 的 stroke_id
+                processed_point.stroke_id = self.stroke_detector.current_stroke_id
+                
+                # ✅ 觸發回調
+                self._trigger_callback('on_point_processed', {
+                    'x': processed_point.x,
+                    'y': processed_point.y,
+                    'pressure': processed_point.pressure,
+                    'tilt_x': processed_point.tilt_x,
+                    'tilt_y': processed_point.tilt_y,
+                    'velocity': processed_point.velocity,
+                    'timestamp': processed_point.timestamp,
+                    'stroke_id': processed_point.stroke_id,
+                    'is_stroke_start': is_stroke_start,
+                    'is_stroke_end': False
+                })
+                
                 self.processing_stats['total_raw_points'] += 1
                 self.processing_stats['total_processed_points'] += 1
                 self.processing_stats['last_activity_time'] = self._get_timestamp()
                 
                 return True
                 
-            except queue.Full:
-                try:
-                    self.processed_point_buffer.get_nowait()
-                    self.processed_point_buffer.put_nowait(processed_point)
-                    return True
-                except queue.Empty:
-                    pass
-            
-            return False
-            
         except Exception as e:
             self.logger.error(f"處理外部點失敗: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
             return False
+
 
 
     def _point_processing_loop(self):
