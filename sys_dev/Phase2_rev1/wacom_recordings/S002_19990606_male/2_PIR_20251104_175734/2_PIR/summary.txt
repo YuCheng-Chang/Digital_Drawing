@@ -1,0 +1,86 @@
+================================================================================
+LSL Recording Summary (Extended Time-Range Based Cleaned Data)
+================================================================================
+
+Session ID: 2_PIR
+Recording Start: 2025-11-04T17:57:34.335636
+Recording End: 2025-11-04T17:58:22.734198
+Duration: 48.40 seconds
+
+Data Cleaning Summary:
+  Cleaning Method: Time-Range Based (Extended)
+  Cleaning Rules:
+    1. stroke_start → tool_switch|from:pen|to:eraser (delete by time range)
+    2. stroke_start → tool_switch|from:pen|to:pen (delete by time range)
+  Original Markers: 52
+  Cleaned Markers: 52
+  Removed Markers: 0
+  Original Ink Samples: 2308
+  Cleaned Ink Samples: 2308
+  Removed Ink Samples: 0
+    • pen→eraser: 0 samples
+    • pen→pen: 0 samples
+
+Final Data Counts:
+  Total Ink Samples: 2308
+  Total Markers: 52
+
+Cleaned Ink Data Statistics:
+  Time range: 79646.537 - 79687.152 s
+  Average sampling rate: 56.8 Hz
+  Pressure range: 0.000 - 0.790
+  Average pressure: 0.579
+
+Event Markers (Extended Time-Range Based Cleaned):
+  [79644.319] recording_start
+  [79646.537] stroke_start_0
+  [79647.400] stroke_end_0
+  [79649.059] stroke_start_1
+  [79649.508] stroke_end_1
+  [79651.029] stroke_start_2
+  [79651.508] stroke_end_2
+  [79652.695] tool_switch|from:pen|to:eraser
+  [79653.230] eraser_0|deleted_strokes:[2]
+  [79654.622] tool_switch|from:eraser|to:pen
+  [79656.013] stroke_start_3
+  [79656.245] stroke_end_3
+  [79656.742] stroke_start_4
+  [79656.906] stroke_end_4
+  [79657.279] stroke_start_5
+  [79657.471] stroke_end_5
+  [79657.681] stroke_start_6
+  [79657.822] stroke_end_6
+  [79659.004] stroke_start_7
+  [79660.499] stroke_end_7
+  [79662.846] stroke_start_8
+  [79663.132] stroke_end_8
+  [79663.450] stroke_start_9
+  [79663.687] stroke_end_9
+  [79663.905] stroke_start_10
+  [79664.117] stroke_end_10
+  [79664.365] stroke_start_11
+  [79664.586] stroke_end_11
+  [79664.779] stroke_start_12
+  [79664.928] stroke_end_12
+  [79665.325] stroke_start_13
+  [79665.467] stroke_end_13
+  [79665.973] stroke_start_14
+  [79666.162] stroke_end_14
+  [79669.073] stroke_start_15
+  [79669.312] stroke_end_15
+  [79669.612] stroke_start_16
+  [79669.898] stroke_end_16
+  [79675.302] stroke_start_17
+  [79675.582] stroke_end_17
+  [79675.969] stroke_start_18
+  [79676.213] stroke_end_18
+  [79677.345] tool_switch|from:pen|to:eraser
+  [79678.296] eraser_0|deleted_strokes:[0, 17]
+  [79679.923] tool_switch|from:eraser|to:pen
+  [79681.181] stroke_start_19
+  [79683.611] stroke_end_19
+  [79684.296] stroke_start_20
+  [79684.847] stroke_end_20
+  [79686.684] stroke_start_21
+  [79687.152] stroke_end_21
+  [79692.663] recording_end

@@ -1,0 +1,44 @@
+{
+  "recording_start": "2025-11-04T19:12:20.320473",
+  "recording_end": "2025-11-04T19:12:27.467117",
+  "device_info": {},
+  "stream_config": {},
+  "session_id": "1_DAP",
+  "subject_info": {
+    "subject_id": "S001",
+    "birth_date": "20001104",
+    "gender": "female",
+    "folder_name": "S001_20001104_female"
+  },
+  "drawing_info": {
+    "drawing_type": "DAP",
+    "drawing_id": 1,
+    "datetime_str": "20251104_191220",
+    "folder_name": "1_DAP_20251104_191220"
+  },
+  "experiment": "wacom_drawing_test",
+  "screen_resolution": "1800x700",
+  "canvas_width": 1800,
+  "canvas_height": 700,
+  "recording_duration": 7.146644115447998,
+  "total_ink_samples": 0,
+  "total_markers": 2,
+  "data_cleaning": {
+    "removed_markers": 0,
+    "removed_ink_samples": 0,
+    "removal_by_reason": {
+      "pen\u2192eraser": 0,
+      "pen\u2192pen": 0,
+      "before_recording_start": 0
+    },
+    "duplicate_stroke_starts_removed": 0,
+    "cleaning_enabled": true,
+    "cleaning_method": "time_range_based_extended_with_deduplication",
+    "cleaning_rules": [
+      "Remove duplicate stroke_start_X markers (keep first occurrence)",
+      "stroke_start \u2192 tool_switch|from:pen|to:eraser (delete by time range)",
+      "stroke_start \u2192 tool_switch|from:pen|to:pen (delete by time range)"
+    ],
+    "cleaning_timestamp": "2025-11-04T19:12:27.503993"
+  }
+}
