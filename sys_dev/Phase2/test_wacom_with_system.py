@@ -216,7 +216,7 @@ class WacomDrawingCanvas(QWidget):
         toolbar_layout.addWidget(self.pen_button)
         
         # 🧹 橡皮擦按鈕
-        self.eraser_button = QPushButton("🧹 橡皮擦")
+        self.eraser_button = QPushButton("🧈 橡皮擦")
         self.eraser_button.setFixedSize(100, 40)
         self.eraser_button.clicked.connect(lambda: self.switch_tool(ToolType.ERASER))
         toolbar_layout.addWidget(self.eraser_button)
