@@ -51,7 +51,7 @@ class WacomDrawingCanvas(QWidget):
         
         # 橡皮擦相關
         self.current_tool = ToolType.PEN
-        self.eraser_tool = EraserTool(radius=20.0)
+        self.eraser_tool = EraserTool(radius=10.0)
         self.current_eraser_points = []
         self.next_stroke_id = 0
         
