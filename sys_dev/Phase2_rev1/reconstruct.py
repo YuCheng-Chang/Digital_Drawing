@@ -24,14 +24,111 @@ logging.basicConfig(
 logger = logging.getLogger('InkReconstructor')
 
 
+# reconstruct.py
+"""
+從 ink_data.csv 和 markers.csv 重建數位墨水繪圖（支援橡皮擦）
+"""
+import pandas as pd
+import numpy as np
+from PyQt5.QtWidgets import QApplication, QFileDialog
+from PyQt5.QtGui import QPainter, QPen, QColor, QPixmap
+from PyQt5.QtCore import Qt
+import sys
+import os
+from pathlib import Path
+import logging
+import re
+import json  # 🆕 添加 json 導入
+
+# 導入配置
+from Config import ProcessingConfig
+
+# 設置日誌
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger('InkReconstructor')
+
+
 class InkDrawingReconstructor:
     """從 CSV 重建數位墨水繪圖（支援橡皮擦）"""
     
-    def __init__(self, config: ProcessingConfig):
-        self.config = config
-        self.canvas_width = config.canvas_width
-        self.canvas_height = config.canvas_height
-        logger.info(f"初始化重建器: 畫布大小 {self.canvas_width}x{self.canvas_height}")
+    def __init__(self, canvas_width: int = None, canvas_height: int = None):
+        """
+        初始化重建器
+        
+        Args:
+            canvas_width: 畫布寬度（若為 None，則從 metadata.json 讀取）
+            canvas_height: 畫布高度（若為 None，則從 metadata.json 讀取）
+        """
+        self.canvas_width = canvas_width
+        self.canvas_height = canvas_height
+        
+        if canvas_width and canvas_height:
+            logger.info(f"初始化重建器: 畫布大小 {self.canvas_width}x{self.canvas_height}")
+        else:
+            logger.info("初始化重建器: 畫布大小將從 metadata.json 讀取")
+    
+    def load_metadata(self, csv_dir: str) -> dict:
+        """
+        🆕 讀取 metadata.json
+        
+        Args:
+            csv_dir: CSV 檔案所在目錄
+            
+        Returns:
+            dict: metadata 字典，若檔案不存在則返回空字典
+        """
+        metadata_path = os.path.join(csv_dir, "metadata.json")
+        
+        if not os.path.exists(metadata_path):
+            logger.warning(f"⚠️ metadata.json 不存在: {metadata_path}")
+            return {}
+        
+        try:
+            logger.info(f"讀取 metadata.json: {metadata_path}")
+            with open(metadata_path, 'r', encoding='utf-8') as f:
+                metadata = json.load(f)
+            
+            logger.info(f"✅ 成功讀取 metadata.json")
+            
+            # 顯示關鍵資訊
+            if 'canvas_width' in metadata and 'canvas_height' in metadata:
+                logger.info(f"   - 畫布尺寸: {metadata['canvas_width']} x {metadata['canvas_height']}")
+            
+            if 'subject_info' in metadata:
+                subject_id = metadata['subject_info'].get('subject_id', 'N/A')
+                logger.info(f"   - 受試者: {subject_id}")
+            
+            if 'drawing_info' in metadata:
+                drawing_type = metadata['drawing_info'].get('drawing_type', 'N/A')
+                logger.info(f"   - 繪畫類型: {drawing_type}")
+            
+            return metadata
+            
+        except Exception as e:
+            logger.error(f"❌ 讀取 metadata.json 失敗: {e}")
+            return {}
+    
+    def set_canvas_size_from_metadata(self, metadata: dict) -> bool:
+        """
+        🆕 從 metadata 設置畫布尺寸
+        
+        Args:
+            metadata: metadata 字典
+            
+        Returns:
+            bool: 是否成功設置
+        """
+        if 'canvas_width' in metadata and 'canvas_height' in metadata:
+            self.canvas_width = metadata['canvas_width']
+            self.canvas_height = metadata['canvas_height']
+            logger.info(f"✅ 從 metadata 設置畫布尺寸: {self.canvas_width} x {self.canvas_height}")
+            return True
+        else:
+            logger.warning("⚠️ metadata 中沒有畫布尺寸資訊")
+            return False
     
     def load_ink_data(self, csv_path: str) -> pd.DataFrame:
         """
@@ -481,7 +578,7 @@ class InkDrawingReconstructor:
     
     def process(self, csv_path: str, output_path: str = None) -> bool:
         """
-        完整處理流程（支援橡皮擦 + 清空畫布）
+        完整處理流程（支援橡皮擦 + 清空畫布 + 從 metadata.json 讀取畫布尺寸）
         
         Args:
             csv_path: CSV 檔案路徑
@@ -502,33 +599,43 @@ class InkDrawingReconstructor:
             logger.info(f"輸入: {csv_path}")
             logger.info(f"輸出: {output_path}")
             
-            # 1. 讀取墨水數據
+            # 🆕 1. 讀取 metadata（如果畫布尺寸未設置）
+            if self.canvas_width is None or self.canvas_height is None:
+                metadata = self.load_metadata(csv_dir)
+                
+                if not self.set_canvas_size_from_metadata(metadata):
+                    # 如果 metadata 中沒有畫布尺寸，使用預設值
+                    logger.warning("⚠️ 使用預設畫布尺寸: 1800 x 700")
+                    self.canvas_width = 1800
+                    self.canvas_height = 700
+            
+            # 2. 讀取墨水數據
             df = self.load_ink_data(csv_path)
             
-            # 2. 讀取標記數據（橡皮擦事件 + 清空畫布）
+            # 3. 讀取標記數據（橡皮擦事件 + 清空畫布）
             markers_df = self.load_markers(csv_dir)
             
-            # 3. 解析筆劃
+            # 4. 解析筆劃
             strokes = self.parse_strokes(df)
             
             if not strokes:
                 logger.warning("⚠️ 沒有檢測到任何筆劃")
                 return False
             
-            # 4. 解析橡皮擦事件
+            # 5. 解析橡皮擦事件
             eraser_events = self.parse_eraser_events(markers_df)
             
-            # 5. 解析清空畫布事件
+            # 6. 解析清空畫布事件
             cleared_strokes = self.parse_canvas_clear_events(markers_df, strokes)
             
-            # 6. 應用刪除事件（橡皮擦 + 清空畫布）
+            # 7. 應用刪除事件（橡皮擦 + 清空畫布）
             final_strokes = self.apply_deletion_events(strokes, eraser_events, cleared_strokes)
             
             if not final_strokes:
                 logger.warning("⚠️ 所有筆劃都被刪除了")
                 # 仍然生成空白圖片
             
-            # 7. 重建繪圖
+            # 8. 重建繪圖
             success = self.reconstruct_drawing(final_strokes, output_path)
             
             if success:
@@ -543,6 +650,7 @@ class InkDrawingReconstructor:
             import traceback
             logger.error(traceback.format_exc())
             return False
+
 
 
 def select_csv_file() -> str:
@@ -593,14 +701,10 @@ def main():
     
     print(f"✅ 選擇的檔案: {csv_path}\n")
     
-    # 2. 載入配置
-    config = ProcessingConfig()
-    print(f"📐 畫布配置: {config.canvas_width} x {config.canvas_height}\n")
+    # 🔧 修改：不再使用 ProcessingConfig，直接創建重建器（畫布尺寸從 metadata.json 讀取）
+    reconstructor = InkDrawingReconstructor()
     
-    # 3. 創建重建器
-    reconstructor = InkDrawingReconstructor(config)
-    
-    # 4. 處理
+    # 2. 處理
     success = reconstructor.process(csv_path)
     
     if success:

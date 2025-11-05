@@ -1,5 +1,5 @@
 # test_wacom_with_system.py
-from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QHBoxLayout, QVBoxLayout, QMessageBox
+from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QHBoxLayout, QVBoxLayout, QMessageBox, QDesktopWidget
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPainter, QPen, QColor, QTabletEvent
 import sys
@@ -26,17 +26,22 @@ class WacomDrawingCanvas(QWidget):
         self.ink_system = ink_system
         self.config = config
         
+        # 🔧 修復：先初始化 logger
+        self.logger = logging.getLogger('WacomDrawingCanvas')
+        
+        # 🆕 獲取螢幕尺寸並更新配置
+        self._setup_screen_size()
+        
         # 受試者和繪畫資訊
         self.subject_info = None
         self.current_drawing_info = None
-        self.drawing_counter = 1  # 🆕 繪畫計數器從 1 開始
+        self.drawing_counter = 1
         
         # 基本屬性
         self.current_stroke_points = []
         self.all_strokes = []
         self.stroke_count = 0
         self.total_points = 0
-        self.logger = logging.getLogger('WacomDrawingCanvas')
         
         # 狀態追蹤
         self.last_point_data = None
@@ -50,15 +55,6 @@ class WacomDrawingCanvas(QWidget):
         self.current_eraser_points = []
         self.next_stroke_id = 0
         
-        # 畫布設置
-        canvas_width = config.canvas_width
-        canvas_height = config.canvas_height
-        
-        # 修改窗口佈局
-        self.setWindowTitle("Wacom 繪圖測試")
-        self.setGeometry(100, 100, canvas_width, canvas_height + 50)
-        self.setMouseTracking(True)
-        
         # 🆕 首先獲取受試者資訊
         if not self.get_subject_info():
             sys.exit()
@@ -67,13 +63,16 @@ class WacomDrawingCanvas(QWidget):
         if not self.get_drawing_type():
             sys.exit()
         
+        # 🆕 設置視窗屬性（最大化 + 禁止調整大小）
+        self._setup_window()
+        
         # 🆕 更新視窗標題
         self._update_window_title()
         
-        # 設置工具欄（修改版）
+        # 設置工具欄
         self._setup_toolbar()
         
-        # 初始化LSL（使用新的目錄結構）
+        # 初始化LSL
         self._initialize_lsl()
         
         # 註冊回調
@@ -85,6 +84,46 @@ class WacomDrawingCanvas(QWidget):
             'on_stroke_completed',
             self._on_stroke_completed_callback
         )
+
+        
+    def _setup_screen_size(self):
+        """🆕 獲取螢幕尺寸並更新配置"""
+        # 獲取主螢幕
+        desktop = QDesktopWidget()
+        screen_rect = desktop.availableGeometry()  # 可用區域（排除工作列）
+        
+        # 計算畫布尺寸（扣除工具列高度）
+        toolbar_height = 50
+        canvas_width = screen_rect.width()
+        canvas_height = screen_rect.height() - toolbar_height
+        
+        # 更新配置
+        self.config.canvas_width = canvas_width
+        self.config.canvas_height = canvas_height
+        
+        self.logger.info(f"🖥️ 螢幕尺寸: {screen_rect.width()} x {screen_rect.height()}")
+        self.logger.info(f"📐 畫布尺寸: {canvas_width} x {canvas_height}")
+    
+    def _setup_window(self):
+        """🆕 設置視窗屬性（最大化 + 禁止調整大小）"""
+        # 設置視窗標題
+        self.setWindowTitle("Wacom 繪圖測試")
+        
+        # 🔧 禁止調整視窗大小
+        self.setFixedSize(self.config.canvas_width, self.config.canvas_height + 50)
+        
+        # 🔧 設置視窗位置（左上角）
+        self.move(0, 0)
+        
+        # 🔧 設置視窗標誌（移除最大化/最小化按鈕，只保留關閉按鈕）
+        # 如果你想保留最小化按鈕，可以改為：
+        # self.setWindowFlags(Qt.Window | Qt.WindowMinimizeButtonHint | Qt.WindowCloseButtonHint)
+        self.setWindowFlags(Qt.Window | Qt.WindowCloseButtonHint)
+        
+        # 設置滑鼠追蹤
+        self.setMouseTracking(True)
+        
+        self.logger.info("✅ 視窗已設置為固定大小（禁止調整）")
     
     def get_subject_info(self):
         """獲取受試者資訊"""
@@ -96,7 +135,7 @@ class WacomDrawingCanvas(QWidget):
         return False
     
     def _update_window_title(self):
-        """🆕 更新視窗標題以顯示當前繪畫類型"""
+        """更新視窗標題以顯示當前繪畫類型"""
         if self.current_drawing_info:
             drawing_type = self.current_drawing_info.get('drawing_type', 'N/A')
             drawing_id = self.current_drawing_info.get('drawing_id', 'N/A')
