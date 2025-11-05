@@ -1,0 +1,57 @@
+================================================================================
+LSL Recording Summary (Extended Time-Range Based Cleaned Data)
+================================================================================
+
+Session ID: 2_DAP
+Recording Start: 2025-11-05T11:23:13.202015
+Recording End: 2025-11-05T11:23:33.223918
+Duration: 20.02 seconds
+
+Data Cleaning Summary:
+  Cleaning Method: Time-Range Based (Extended)
+  Cleaning Rules:
+    1. stroke_start → tool_switch|from:pen|to:eraser (delete by time range)
+    2. stroke_start → tool_switch|from:pen|to:pen (delete by time range)
+  Original Markers: 23
+  Cleaned Markers: 23
+  Removed Markers: 0
+  Original Ink Samples: 1097
+  Cleaned Ink Samples: 1097
+  Removed Ink Samples: 0
+    • pen→eraser: 0 samples
+    • pen→pen: 0 samples
+
+Final Data Counts:
+  Total Ink Samples: 1097
+  Total Markers: 23
+
+Cleaned Ink Data Statistics:
+  Time range: 152841.342 - 152854.172 s
+  Average sampling rate: 85.5 Hz
+  Pressure range: 0.000 - 0.820
+  Average pressure: 0.672
+
+Event Markers (Extended Time-Range Based Cleaned):
+  [152838.607] recording_start
+  [152841.342] stroke_start_0
+  [152842.164] stroke_end_0
+  [152843.282] stroke_start_1
+  [152843.557] stroke_end_1
+  [152843.837] stroke_start_2
+  [152844.162] stroke_end_2
+  [152845.371] tool_switch|from:pen|to:eraser
+  [152846.065] eraser_0|deleted_strokes:[0]
+  [152847.462] tool_switch|from:eraser|to:pen
+  [152848.491] stroke_start_3
+  [152850.686] stroke_end_3
+  [152851.144] stroke_start_4
+  [152851.474] stroke_end_4
+  [152851.705] stroke_start_5
+  [152851.939] stroke_end_5
+  [152852.275] stroke_start_6
+  [152852.565] stroke_end_6
+  [152852.985] stroke_start_7
+  [152853.145] stroke_end_7
+  [152853.957] stroke_start_8
+  [152854.172] stroke_end_8
+  [152858.576] recording_end

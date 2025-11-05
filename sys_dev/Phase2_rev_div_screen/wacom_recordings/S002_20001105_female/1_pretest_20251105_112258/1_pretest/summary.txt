@@ -1,0 +1,40 @@
+================================================================================
+LSL Recording Summary (Extended Time-Range Based Cleaned Data)
+================================================================================
+
+Session ID: 1_pretest
+Recording Start: 2025-11-05T11:22:58.715989
+Recording End: 2025-11-05T11:23:04.829440
+Duration: 6.11 seconds
+
+Data Cleaning Summary:
+  Cleaning Method: Time-Range Based (Extended)
+  Cleaning Rules:
+    1. stroke_start → tool_switch|from:pen|to:eraser (delete by time range)
+    2. stroke_start → tool_switch|from:pen|to:pen (delete by time range)
+  Original Markers: 6
+  Cleaned Markers: 6
+  Removed Markers: 0
+  Original Ink Samples: 233
+  Cleaned Ink Samples: 233
+  Removed Ink Samples: 0
+    • pen→eraser: 0 samples
+    • pen→pen: 0 samples
+
+Final Data Counts:
+  Total Ink Samples: 233
+  Total Markers: 6
+
+Cleaned Ink Data Statistics:
+  Time range: 152826.374 - 152827.864 s
+  Average sampling rate: 156.4 Hz
+  Pressure range: 0.000 - 0.805
+  Average pressure: 0.707
+
+Event Markers (Extended Time-Range Based Cleaned):
+  [152824.121] recording_start
+  [152826.374] stroke_start_0
+  [152826.914] stroke_end_0
+  [152827.404] stroke_start_1
+  [152827.864] stroke_end_1
+  [152830.181] recording_end

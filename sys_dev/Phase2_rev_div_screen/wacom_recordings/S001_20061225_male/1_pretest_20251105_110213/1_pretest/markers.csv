@@ -1,0 +1,11 @@
+timestamp,marker_text
+151580.907786,recording_start
+151590.195348,stroke_start_0
+151590.590603,stroke_end_0
+151591.565374,stroke_start_1
+151592.048059,stroke_end_1
+151594.236458,stroke_start_2
+151594.811060,stroke_end_2
+151596.687978,tool_switch|from:pen|to:eraser
+151598.071429,eraser_0|deleted_strokes:[0]
+151600.696154,recording_end
