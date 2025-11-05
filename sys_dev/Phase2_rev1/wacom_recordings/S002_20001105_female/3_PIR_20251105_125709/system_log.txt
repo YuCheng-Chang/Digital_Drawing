@@ -1,0 +1,100 @@
+2025-11-05 12:57:09,119 - WacomDrawingCanvas - INFO - ✅ 日誌已配置輸出到: ./wacom_recordings\S002_20001105_female\3_PIR_20251105_125709\system_log.txt
+2025-11-05 12:57:09,121 - InkProcessingSystem - INFO - ✅ 已設置外部時間源（LSL 時間）
+2025-11-05 12:57:09,122 - WacomDrawingCanvas - INFO - ✅ 墨水系統時間源已設置為 LSL 時間
+2025-11-05 12:57:09,123 - PointProcessor - DEBUG - 🧹 已清空歷史點緩存
+2025-11-05 12:57:09,124 - InkProcessingSystem - INFO - ✅ 已設置外部時間源（LSL 時間）
+2025-11-05 12:57:09,124 - WacomDrawingCanvas - INFO - ✅ 墨水系統已重置
+2025-11-05 12:57:09,125 - WacomDrawingCanvas - INFO - ✅ 新繪畫已開始 (繪畫編號: 3)
+2025-11-05 12:57:09,128 - WacomDrawingCanvas - INFO - 🚪 筆進入畫布區域 (當前壓力: 0.000)
+2025-11-05 12:57:11,004 - WacomDrawingCanvas - INFO - 🚪 筆離開畫布區域 (當前壓力: 0.000)
+2025-11-05 12:57:11,008 - PointProcessor - DEBUG - 🧹 已清空歷史點緩存
+2025-11-05 12:57:11,012 - WacomDrawingCanvas - INFO - 🧹 已清空 PointProcessor 歷史緩存
+2025-11-05 12:57:11,015 - StrokeDetector - INFO - 🔄 強制重置狀態: current_state=IDLE, current_stroke_id=0, current_points=0
+2025-11-05 12:57:11,016 - StrokeDetector - INFO - ✅ 狀態已重置為 IDLE，下一筆將使用 stroke_id=0
+2025-11-05 12:57:11,017 - WacomDrawingCanvas - INFO - 🧹 已強制重置 StrokeDetector 狀態
+2025-11-05 12:57:11,018 - WacomDrawingCanvas - INFO - ✅ 筆劃已強制結束，所有狀態已清理
+2025-11-05 12:57:11,662 - WacomDrawingCanvas - INFO - 🚪 筆進入畫布區域 (當前壓力: 0.000)
+2025-11-05 12:57:12,475 - WacomDrawingCanvas - INFO - 🔄 準備切換工具: pen → eraser
+2025-11-05 12:57:12,476 - LSLStreamManager - DEBUG - Marker pushed: tool_switch|from:pen|to:eraser
+2025-11-05 12:57:12,477 - LSLDataRecorder - DEBUG - Marker recorded: tool_switch|from:pen|to:eraser at 148022.460
+2025-11-05 12:57:12,478 - LSLIntegration - INFO - 🔄 工具切換事件已記錄: pen → eraser
+2025-11-05 12:57:12,478 - PointProcessor - DEBUG - 🧹 已清空歷史點緩存
+2025-11-05 12:57:12,479 - WacomDrawingCanvas - INFO - 🔄 StrokeDetector 狀態已重置為 IDLE
+2025-11-05 12:57:12,480 - WacomDrawingCanvas - INFO - ✅ 切換到橡皮擦
+2025-11-05 12:57:13,493 - WacomDrawingCanvas - INFO - 🔄 準備切換工具: eraser → pen
+2025-11-05 12:57:13,494 - LSLStreamManager - DEBUG - Marker pushed: tool_switch|from:eraser|to:pen
+2025-11-05 12:57:13,495 - LSLDataRecorder - DEBUG - Marker recorded: tool_switch|from:eraser|to:pen at 148023.477
+2025-11-05 12:57:13,495 - LSLIntegration - INFO - 🔄 工具切換事件已記錄: eraser → pen
+2025-11-05 12:57:13,495 - PointProcessor - DEBUG - 🧹 已清空歷史點緩存
+2025-11-05 12:57:13,496 - WacomDrawingCanvas - INFO - 🔄 StrokeDetector 狀態已重置為 IDLE
+2025-11-05 12:57:13,497 - WacomDrawingCanvas - INFO - ✅ 切換到筆工具
+2025-11-05 12:57:13,928 - WacomDrawingCanvas - INFO - 🚪 筆離開畫布區域 (當前壓力: 0.000)
+2025-11-05 12:57:13,932 - PointProcessor - DEBUG - 🧹 已清空歷史點緩存
+2025-11-05 12:57:13,936 - WacomDrawingCanvas - INFO - 🧹 已清空 PointProcessor 歷史緩存
+2025-11-05 12:57:13,939 - StrokeDetector - INFO - 🔄 強制重置狀態: current_state=IDLE, current_stroke_id=0, current_points=0
+2025-11-05 12:57:13,943 - StrokeDetector - INFO - ✅ 狀態已重置為 IDLE，下一筆將使用 stroke_id=0
+2025-11-05 12:57:13,944 - WacomDrawingCanvas - INFO - 🧹 已強制重置 StrokeDetector 狀態
+2025-11-05 12:57:13,946 - WacomDrawingCanvas - INFO - ✅ 筆劃已強制結束，所有狀態已清理
+2025-11-05 12:57:14,684 - WacomDrawingCanvas - INFO - ============================================================
+2025-11-05 12:57:14,685 - WacomDrawingCanvas - INFO - 🔚 程序關閉
+2025-11-05 12:57:14,686 - WacomDrawingCanvas - INFO - ============================================================
+2025-11-05 12:57:14,686 - WacomDrawingCanvas - INFO - ============================================================
+2025-11-05 12:57:14,687 - WacomDrawingCanvas - INFO - 📈 繪畫統計
+2025-11-05 12:57:14,687 - WacomDrawingCanvas - INFO - ============================================================
+2025-11-05 12:57:14,688 - WacomDrawingCanvas - INFO - 受試者編號: S002
+2025-11-05 12:57:14,688 - WacomDrawingCanvas - INFO - 繪畫類型: PIR
+2025-11-05 12:57:14,689 - WacomDrawingCanvas - INFO - 繪畫計數: 3
+2025-11-05 12:57:14,689 - WacomDrawingCanvas - INFO - 繪畫ID: 3
+2025-11-05 12:57:14,690 - WacomDrawingCanvas - INFO - ------------------------------------------------------------
+2025-11-05 12:57:14,690 - WacomDrawingCanvas - INFO - 總筆劃數: 0
+2025-11-05 12:57:14,691 - WacomDrawingCanvas - INFO - 總原始點數: 0
+2025-11-05 12:57:14,691 - WacomDrawingCanvas - INFO - 總處理點數: 0
+2025-11-05 12:57:14,692 - WacomDrawingCanvas - INFO - 平均採樣率: N/A (樣本數不足: 0)
+2025-11-05 12:57:14,692 - WacomDrawingCanvas - INFO - ------------------------------------------------------------
+2025-11-05 12:57:14,693 - WacomDrawingCanvas - INFO - 畫布筆劃數: 0 (已刪除: 0)
+2025-11-05 12:57:14,693 - WacomDrawingCanvas - INFO - ============================================================
+2025-11-05 12:57:14,742 - WacomDrawingCanvas - INFO - ✅ 畫布已匯出: wacom_recordings\S002_20001105_female\3_PIR_20251105_125709\3_PIR\canvas_drawing.png
+2025-11-05 12:57:14,744 - WacomDrawingCanvas - INFO -    - 檔案大小: 5.23 KB
+2025-11-05 12:57:14,745 - WacomDrawingCanvas - INFO - ✅ 畫布已保存: wacom_recordings\S002_20001105_female\3_PIR_20251105_125709\3_PIR\canvas_drawing.png
+2025-11-05 12:57:14,745 - WacomDrawingCanvas - INFO - 🔚 保存當前繪畫數據...
+2025-11-05 12:57:14,746 - LSLIntegration - INFO - Stopping LSL integration...
+2025-11-05 12:57:14,747 - LSLStreamManager - DEBUG - Marker pushed: recording_end
+2025-11-05 12:57:14,747 - LSLDataRecorder - DEBUG - Marker recorded: recording_end at 148024.730
+2025-11-05 12:57:14,748 - LSLStreamManager - INFO - Closing LSL streams...
+2025-11-05 12:57:14,748 - LSLStreamManager - DEBUG - Marker pushed: stream_end
+2025-11-05 12:57:14,800 - LSLStreamManager - INFO - Stream closed. Final stats: {'total_ink_samples': 0, 'total_markers': 5, 'stream_duration': 5.6862043000000995, 'last_sample_time': None}
+2025-11-05 12:57:14,802 - LSLDataRecorder - INFO - Recording stopped. Saving 0 ink samples and 4 markers...
+2025-11-05 12:57:14,804 - LSLDataRecorder - INFO - 🧹 開始清理（擴展模式：pen→eraser、pen→pen + 去重）...
+2025-11-05 12:57:14,804 - LSLDataRecorder - INFO - ✅ 找到最後一個 recording_start: 148019.098
+2025-11-05 12:57:14,805 - LSLDataRecorder - INFO - ✅ 去重完成，移除 0 個重複的 stroke_start 標記
+2025-11-05 12:57:14,805 - LSLDataRecorder - INFO - ✅ 清理完成:
+2025-11-05 12:57:14,806 - LSLDataRecorder - INFO -    - 重複 stroke_start 移除: 0 個
+2025-11-05 12:57:14,807 - LSLDataRecorder - INFO -    - 無效時間範圍: 0 個
+2025-11-05 12:57:14,807 - LSLDataRecorder - INFO -    - 移除標記: 0 個
+2025-11-05 12:57:14,808 - LSLDataRecorder - INFO -    - 移除墨水點: 0 個
+2025-11-05 12:57:14,808 - LSLDataRecorder - INFO -      • pen→eraser: 0 個
+2025-11-05 12:57:14,808 - LSLDataRecorder - INFO -      • pen→pen: 0 個
+2025-11-05 12:57:14,809 - LSLDataRecorder - INFO -      • before_recording_start: 0 個
+2025-11-05 12:57:14,809 - LSLDataRecorder - INFO -    - 剩餘標記: 4 個
+2025-11-05 12:57:14,810 - LSLDataRecorder - INFO -    - 剩餘墨水點: 0 個
+2025-11-05 12:57:14,855 - LSLDataRecorder - INFO - 💾 已保存原始數據（沒有數據被清理，但仍保存用於對比）
+2025-11-05 12:57:14,867 - LSLDataRecorder - INFO - Data saved successfully: {'ink_csv': 'wacom_recordings\\S002_20001105_female\\3_PIR_20251105_125709\\3_PIR\\ink_data.csv', 'ink_json': 'wacom_recordings\\S002_20001105_female\\3_PIR_20251105_125709\\3_PIR\\ink_data.json', 'markers_csv': 'wacom_recordings\\S002_20001105_female\\3_PIR_20251105_125709\\3_PIR\\markers.csv', 'markers_raw': 'wacom_recordings\\S002_20001105_female\\3_PIR_20251105_125709\\3_PIR\\markers_raw.csv', 'ink_data_raw': 'wacom_recordings\\S002_20001105_female\\3_PIR_20251105_125709\\3_PIR\\ink_data_raw.csv', 'metadata': 'wacom_recordings\\S002_20001105_female\\3_PIR_20251105_125709\\3_PIR\\metadata.json', 'summary': 'wacom_recordings\\S002_20001105_female\\3_PIR_20251105_125709\\3_PIR\\summary.txt'}
+2025-11-05 12:57:14,868 - LSLIntegration - INFO - LSL integration stopped. Files saved: 7
+2025-11-05 12:57:14,869 - WacomDrawingCanvas - INFO - ✅ 當前繪畫數據已保存: {'ink_csv': 'wacom_recordings\\S002_20001105_female\\3_PIR_20251105_125709\\3_PIR\\ink_data.csv', 'ink_json': 'wacom_recordings\\S002_20001105_female\\3_PIR_20251105_125709\\3_PIR\\ink_data.json', 'markers_csv': 'wacom_recordings\\S002_20001105_female\\3_PIR_20251105_125709\\3_PIR\\markers.csv', 'markers_raw': 'wacom_recordings\\S002_20001105_female\\3_PIR_20251105_125709\\3_PIR\\markers_raw.csv', 'ink_data_raw': 'wacom_recordings\\S002_20001105_female\\3_PIR_20251105_125709\\3_PIR\\ink_data_raw.csv', 'metadata': 'wacom_recordings\\S002_20001105_female\\3_PIR_20251105_125709\\3_PIR\\metadata.json', 'summary': 'wacom_recordings\\S002_20001105_female\\3_PIR_20251105_125709\\3_PIR\\summary.txt'}
+2025-11-05 12:57:14,870 - WacomDrawingCanvas - INFO - 停止墨水處理系統...
+2025-11-05 12:57:14,871 - InkProcessingSystem - INFO - Stopping processing pipeline...
+2025-11-05 12:57:14,871 - InkProcessingSystem - DEBUG - 沒有未完成的筆劃需要處理
+2025-11-05 12:57:14,872 - RawDataCollector - WARNING - 數據收集未在進行中
+2025-11-05 12:57:14,882 - InkProcessingSystem - INFO - Stroke detection loop ended
+2025-11-05 12:57:14,943 - InkProcessingSystem - INFO - Feature calculation loop ended
+2025-11-05 12:57:15,296 - InkProcessingSystem - INFO - Status monitoring loop ended
+2025-11-05 12:57:15,297 - InkProcessingSystem - INFO - Processing pipeline stopped
+2025-11-05 12:57:15,299 - InkProcessingSystem - INFO - Shutting down ink processing system...
+2025-11-05 12:57:15,299 - PointProcessor - INFO - 正在關閉點處理器...
+2025-11-05 12:57:15,300 - PointProcessor - INFO - 點處理器已關閉
+2025-11-05 12:57:15,300 - StrokeDetector - INFO - 正在關閉筆劃檢測器...
+2025-11-05 12:57:15,301 - StrokeDetector - INFO - ✅ 檢測器狀態已重置
+2025-11-05 12:57:15,302 - StrokeDetector - INFO - ✅ 筆劃檢測器已關閉
+2025-11-05 12:57:15,302 - FeatureCalculator - INFO - 正在關閉特徵計算器...
+2025-11-05 12:57:15,303 - FeatureCalculator - INFO - 特徵計算器已關閉
+2025-11-05 12:57:15,304 - InkProcessingSystem - INFO - System shutdown complete

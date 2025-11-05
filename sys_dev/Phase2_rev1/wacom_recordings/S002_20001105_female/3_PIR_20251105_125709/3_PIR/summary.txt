@@ -1,0 +1,32 @@
+================================================================================
+LSL Recording Summary (Extended Time-Range Based Cleaned Data)
+================================================================================
+
+Session ID: 3_PIR
+Recording Start: 2025-11-05T12:57:09.115332
+Recording End: 2025-11-05T12:57:14.802077
+Duration: 5.69 seconds
+
+Data Cleaning Summary:
+  Cleaning Method: Time-Range Based (Extended)
+  Cleaning Rules:
+    1. stroke_start → tool_switch|from:pen|to:eraser (delete by time range)
+    2. stroke_start → tool_switch|from:pen|to:pen (delete by time range)
+  Original Markers: 4
+  Cleaned Markers: 4
+  Removed Markers: 0
+  Original Ink Samples: 0
+  Cleaned Ink Samples: 0
+  Removed Ink Samples: 0
+    • pen→eraser: 0 samples
+    • pen→pen: 0 samples
+
+Final Data Counts:
+  Total Ink Samples: 0
+  Total Markers: 4
+
+Event Markers (Extended Time-Range Based Cleaned):
+  [148019.098] recording_start
+  [148022.460] tool_switch|from:pen|to:eraser
+  [148023.477] tool_switch|from:eraser|to:pen
+  [148024.730] recording_end

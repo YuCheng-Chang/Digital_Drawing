@@ -67,6 +67,9 @@ class WacomDrawingCanvas(QWidget):
         if not self.get_drawing_type():
             sys.exit()
         
+        # 🆕 更新視窗標題
+        self._update_window_title()
+        
         # 設置工具欄（修改版）
         self._setup_toolbar()
         
@@ -92,9 +95,21 @@ class WacomDrawingCanvas(QWidget):
             return True
         return False
     
+    def _update_window_title(self):
+        """🆕 更新視窗標題以顯示當前繪畫類型"""
+        if self.current_drawing_info:
+            drawing_type = self.current_drawing_info.get('drawing_type', 'N/A')
+            drawing_id = self.current_drawing_info.get('drawing_id', 'N/A')
+            subject_id = self.subject_info.get('subject_id', 'N/A') if self.subject_info else 'N/A'
+            
+            title = f"Wacom 繪圖測試 - {subject_id} - 繪畫 #{drawing_id} ({drawing_type})"
+            self.setWindowTitle(title)
+            self.logger.info(f"📝 視窗標題已更新: {title}")
+        else:
+            self.setWindowTitle("Wacom 繪圖測試")
+    
     def get_drawing_type(self):
         """獲取繪畫類型"""
-        # 🆕 傳入當前繪畫計數器
         dialog = DrawingTypeDialog(self.drawing_counter, self)
         if dialog.exec_() == dialog.Accepted:
             self.current_drawing_info = dialog.drawing_info
@@ -161,23 +176,25 @@ class WacomDrawingCanvas(QWidget):
             # 1. 完成當前繪畫的保存工作
             self._finish_current_drawing()
             
-            # 2. 🆕 遞增繪畫計數器
+            # 2. 遞增繪畫計數器
             self.drawing_counter += 1
             
-            # 3. 獲取新的繪畫類型（傳入新的計數器）
+            # 3. 獲取新的繪畫類型
             if not self.get_drawing_type():
                 self.logger.info("用戶取消新繪畫")
-                # 🆕 如果取消，計數器回退
                 self.drawing_counter -= 1
                 return
             
-            # 4. 重置畫布狀態
+            # 4. 🆕 更新視窗標題
+            self._update_window_title()
+            
+            # 5. 重置畫布狀態
             self._reset_canvas_state()
             
-            # 5. 重新初始化LSL（新目錄）
+            # 6. 重新初始化LSL（新目錄）
             self._initialize_lsl()
             
-            # 6. 重新設置墨水系統
+            # 7. 重新設置墨水系統
             self._reset_ink_system()
             
             self.logger.info(f"✅ 新繪畫已開始 (繪畫編號: {self.drawing_counter})")
@@ -1055,12 +1072,16 @@ class WacomDrawingCanvas(QWidget):
                     int(self.eraser_tool.radius * 2)
                 )
         
+        # 🔧 修改狀態列顯示，添加繪畫類型
         painter.setPen(QPen(QColor(100, 100, 100)))
+        
+        drawing_type = self.current_drawing_info.get('drawing_type', 'N/A') if self.current_drawing_info else 'N/A'
         
         if self.last_point_data:
             x_pixel = self.last_point_data['x'] * self.width()
             y_pixel = self.last_point_data['y'] * self.height()
             stats_text = (
+                f"類型: {drawing_type} | "  # 🆕 添加繪畫類型
                 f"工具: {self.current_tool.value} | "
                 f"筆劃數: {len([s for s in self.all_strokes if not s['is_deleted']])} | "
                 f"總點數: {self.total_points} | "
@@ -1069,6 +1090,7 @@ class WacomDrawingCanvas(QWidget):
             )
         else:
             stats_text = (
+                f"類型: {drawing_type} | "  # 🆕 添加繪畫類型
                 f"工具: {self.current_tool.value} | "
                 f"筆劃數: {len([s for s in self.all_strokes if not s['is_deleted']])} | "
                 f"總點數: {self.total_points} | "
@@ -1076,7 +1098,7 @@ class WacomDrawingCanvas(QWidget):
             )
         
         painter.drawText(10, 20, stats_text)
-
+        
     def update_stats_display(self):
         """更新統計顯示"""
         self.setWindowTitle(

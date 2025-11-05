@@ -79,18 +79,19 @@ class SubjectInfoDialog(QDialog):
         
         self.accept()
 
+
 class DrawingTypeDialog(QDialog):
     """繪畫類型選擇對話框"""
     
-    def __init__(self, drawing_counter: int, parent=None):  # 🆕 添加 drawing_counter 參數
+    def __init__(self, drawing_counter: int, parent=None):
         super().__init__(parent)
         self.setWindowTitle("選擇繪畫類型")
         self.setModal(True)
-        self.setFixedSize(350, 180)  # 稍微加高以顯示繪畫編號
+        self.setFixedSize(350, 200)  # 🔧 稍微加高以容納新選項
         
         # 存儲結果
         self.drawing_info = None
-        self.drawing_counter = drawing_counter  # 🆕 保存繪畫計數器
+        self.drawing_counter = drawing_counter
         
         # 創建UI
         self.setup_ui()
@@ -98,14 +99,15 @@ class DrawingTypeDialog(QDialog):
     def setup_ui(self):
         layout = QFormLayout()
         
-        # 🆕 顯示繪畫編號
+        # 顯示繪畫編號
         self.drawing_id_label = QLabel(f"繪畫編號: {self.drawing_counter}")
         self.drawing_id_label.setStyleSheet("font-weight: bold; color: #2196F3;")
         layout.addRow(self.drawing_id_label)
         
-        # 繪畫類型
+        # 🆕 繪畫類型（添加 pretest）
         self.drawing_type_combo = QComboBox()
         self.drawing_type_combo.addItems([
+            "pretest (練習測試)",  # 🆕 新增選項
             "DAP (Draw-a-Person Test)",
             "HTP (House-Tree-Person Test)", 
             "PIR (Person-in-the-Rain Test)"
@@ -134,8 +136,10 @@ class DrawingTypeDialog(QDialog):
     def accept_input(self):
         selected_text = self.drawing_type_combo.currentText()
         
-        # 提取類型代碼
-        if "DAP" in selected_text:
+        # 🔧 提取類型代碼（添加 pretest 判斷）
+        if "pretest" in selected_text:
+            drawing_type = "pretest"
+        elif "DAP" in selected_text:
             drawing_type = "DAP"
         elif "HTP" in selected_text:
             drawing_type = "HTP"
@@ -144,16 +148,16 @@ class DrawingTypeDialog(QDialog):
         else:
             drawing_type = "DAP"  # 預設
         
-        # 🆕 使用當前時間戳作為日期時間字串
+        # 使用當前時間戳作為日期時間字串
         current_time = datetime.now()
         datetime_str = current_time.strftime("%Y%m%d_%H%M%S")
         
-        # 🆕 修改：使用數字ID而不是時間戳
+        # 使用數字ID
         self.drawing_info = {
             'drawing_type': drawing_type,
-            'drawing_id': self.drawing_counter,  # ← 改為數字
+            'drawing_id': self.drawing_counter,
             'datetime_str': datetime_str,
-            'folder_name': f"{self.drawing_counter}_{drawing_type}_{datetime_str}"  # ← 格式：1_DAP_20241104_143022
+            'folder_name': f"{self.drawing_counter}_{drawing_type}_{datetime_str}"
         }
         
         self.accept()

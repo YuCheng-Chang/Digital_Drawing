@@ -1,0 +1,30 @@
+================================================================================
+LSL Recording Summary (Extended Time-Range Based Cleaned Data)
+================================================================================
+
+Session ID: 1_DAP
+Recording Start: 2025-11-05T12:33:39.486077
+Recording End: 2025-11-05T12:33:41.817590
+Duration: 2.33 seconds
+
+Data Cleaning Summary:
+  Cleaning Method: Time-Range Based (Extended)
+  Cleaning Rules:
+    1. stroke_start → tool_switch|from:pen|to:eraser (delete by time range)
+    2. stroke_start → tool_switch|from:pen|to:pen (delete by time range)
+  Original Markers: 2
+  Cleaned Markers: 2
+  Removed Markers: 0
+  Original Ink Samples: 0
+  Cleaned Ink Samples: 0
+  Removed Ink Samples: 0
+    • pen→eraser: 0 samples
+    • pen→pen: 0 samples
+
+Final Data Counts:
+  Total Ink Samples: 0
+  Total Markers: 2
+
+Event Markers (Extended Time-Range Based Cleaned):
+  [146609.469] recording_start
+  [146611.748] recording_end

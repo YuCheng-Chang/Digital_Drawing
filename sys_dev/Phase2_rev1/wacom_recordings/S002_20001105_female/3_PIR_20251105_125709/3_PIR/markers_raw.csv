@@ -1,0 +1,5 @@
+timestamp,marker_text
+148019.098471,recording_start
+148022.460082,tool_switch|from:pen|to:eraser
+148023.477279,tool_switch|from:eraser|to:pen
+148024.729798,recording_end
