@@ -278,41 +278,66 @@ class WacomDrawingCanvas(QWidget):
         self.logger.info("✅ 墨水系統時間源已設置為 LSL 時間")
     
     def start_new_drawing(self):
-        """🆕 開始新繪畫"""
+        """🆕 開始新繪畫（修改版：先顯示對話框，確認後才終止當前繪畫）"""
         try:
             self.logger.info("=" * 60)
-            self.logger.info("🎨 開始新繪畫")
+            self.logger.info("🎨 準備開始新繪畫")
             self.logger.info("=" * 60)
             
-            # 1. 完成當前繪畫的保存工作
+            # 1. 先遞增繪畫計數器（用於對話框顯示）
+            next_drawing_counter = self.drawing_counter + 1
+            
+            # 2. 先獲取新的繪畫類型（不終止當前繪畫）
+            dialog = DrawingTypeDialog(next_drawing_counter, self)
+            
+            if self.is_extended_mode:
+                # 延伸模式：將對話框移動到主螢幕中央
+                dialog_width = dialog.width()
+                dialog_height = dialog.height()
+                x = self.primary_screen.x() + (self.primary_screen.width() - dialog_width) // 2
+                y = self.primary_screen.y() + (self.primary_screen.height() - dialog_height) // 2
+                dialog.move(x, y)
+                self.logger.info(f"🎨 繪畫類型對話框顯示在主螢幕: ({x}, {y})")
+            else:
+                # 單螢幕模式：使用預設位置（螢幕中央）
+                self.logger.info("🎨 繪畫類型對話框顯示在螢幕中央（單螢幕模式）")
+            
+            # 3. 只有當用戶點擊「確定」時才執行後續操作
+            if dialog.exec_() != dialog.Accepted:
+                self.logger.info("❌ 用戶取消新繪畫，繼續當前繪畫")
+                return  # 用戶取消，直接返回，當前繪畫繼續
+            
+            # 4. 用戶確認，現在才開始終止當前繪畫
+            self.logger.info("✅ 用戶確認新繪畫，開始終止當前繪畫")
+            
+            # 5. 完成當前繪畫的保存工作
             self._finish_current_drawing()
             
-            # 2. 遞增繪畫計數器
-            self.drawing_counter += 1
+            # 6. 更新繪畫計數器和資訊
+            self.drawing_counter = next_drawing_counter
+            self.current_drawing_info = dialog.drawing_info
+            self.logger.info(f"✅ 新繪畫資訊: {self.current_drawing_info}")
             
-            # 3. 獲取新的繪畫類型
-            if not self.get_drawing_type():
-                self.logger.info("用戶取消新繪畫")
-                self.drawing_counter -= 1
-                return
-            
-            # 4. 🆕 更新視窗標題
+            # 7. 更新視窗標題
             self._update_window_title()
             
-            # 5. 重置畫布狀態
+            # 8. 重置畫布狀態
             self._reset_canvas_state()
             
-            # 6. 重新初始化LSL（新目錄）
+            # 9. 重新初始化LSL（新目錄）
             self._initialize_lsl()
             
-            # 7. 重新設置墨水系統
+            # 10. 重新設置墨水系統
             self._reset_ink_system()
             
             self.logger.info(f"✅ 新繪畫已開始 (繪畫編號: {self.drawing_counter})")
             
         except Exception as e:
             self.logger.error(f"❌ 開始新繪畫失敗: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
             QMessageBox.critical(self, "錯誤", f"開始新繪畫失敗: {e}")
+
     
     def _setup_logging_to_file(self, session_id: str, output_dir: str):
         """設置日誌輸出到文件"""
@@ -400,28 +425,31 @@ class WacomDrawingCanvas(QWidget):
             import traceback
             self.logger.error(traceback.format_exc())
 
-    
     def _setup_toolbar(self):
-        """設置工具欄（修改版：移除清空按鈕，添加新繪畫按鈕）"""
+        """設置工具欄（修改版：只顯示圖示，懸停顯示提示）"""
         toolbar_layout = QHBoxLayout()
         
         # 筆工具按鈕
-        self.pen_button = QPushButton("🖊️ 筆")
-        self.pen_button.setFixedSize(100, 40)
-        self.pen_button.setStyleSheet("background-color: lightblue;")
+        self.pen_button = QPushButton("🖊️")
+        self.pen_button.setFixedSize(60, 40)
+        self.pen_button.setStyleSheet("background-color: lightblue; font-size: 20px;")
+        self.pen_button.setToolTip("筆")
         self.pen_button.clicked.connect(lambda: self.switch_tool(ToolType.PEN))
         toolbar_layout.addWidget(self.pen_button)
         
         # 橡皮擦按鈕
-        self.eraser_button = QPushButton("🧈 橡皮擦")
-        self.eraser_button.setFixedSize(100, 40)
+        self.eraser_button = QPushButton("🧈")
+        self.eraser_button.setFixedSize(60, 40)
+        self.eraser_button.setStyleSheet("font-size: 20px;")
+        self.eraser_button.setToolTip("橡皮擦")
         self.eraser_button.clicked.connect(lambda: self.switch_tool(ToolType.ERASER))
         toolbar_layout.addWidget(self.eraser_button)
         
-        # 🆕 新繪畫按鈕（取代清空按鈕）
-        self.new_drawing_button = QPushButton("🎨 新繪畫")
-        self.new_drawing_button.setFixedSize(100, 40)
-        self.new_drawing_button.setStyleSheet("background-color: lightgreen;")
+        # 新繪畫按鈕
+        self.new_drawing_button = QPushButton("🎨")
+        self.new_drawing_button.setFixedSize(60, 40)
+        self.new_drawing_button.setStyleSheet("background-color: lightgreen; font-size: 20px;")
+        self.new_drawing_button.setToolTip("新繪畫")
         self.new_drawing_button.clicked.connect(self.start_new_drawing)
         toolbar_layout.addWidget(self.new_drawing_button)
         
@@ -1209,7 +1237,7 @@ class WacomDrawingCanvas(QWidget):
                 f"壓力: {self.current_pressure:.3f} | 位置: N/A"
             )
         
-        painter.drawText(10, 20, stats_text)
+        # painter.drawText(10, 20, stats_text)
         
     def update_stats_display(self):
         """更新統計顯示"""
