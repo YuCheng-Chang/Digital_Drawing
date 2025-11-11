@@ -432,7 +432,7 @@ class WacomDrawingCanvas(QWidget):
         # 筆工具按鈕
         self.pen_button = QPushButton("🖊️")
         self.pen_button.setFixedSize(60, 40)
-        self.pen_button.setStyleSheet("background-color: lightblue; font-size: 20px;")
+        self.pen_button.setStyleSheet("background-color: lightblue;")
         self.pen_button.setToolTip("筆")
         self.pen_button.clicked.connect(lambda: self.switch_tool(ToolType.PEN))
         toolbar_layout.addWidget(self.pen_button)
@@ -440,7 +440,7 @@ class WacomDrawingCanvas(QWidget):
         # 橡皮擦按鈕
         self.eraser_button = QPushButton("🧈")
         self.eraser_button.setFixedSize(60, 40)
-        self.eraser_button.setStyleSheet("font-size: 20px;")
+        # self.eraser_button.setStyleSheet("font-size: 20px;")
         self.eraser_button.setToolTip("橡皮擦")
         self.eraser_button.clicked.connect(lambda: self.switch_tool(ToolType.ERASER))
         toolbar_layout.addWidget(self.eraser_button)
@@ -448,7 +448,7 @@ class WacomDrawingCanvas(QWidget):
         # 新繪畫按鈕
         self.new_drawing_button = QPushButton("🎨")
         self.new_drawing_button.setFixedSize(60, 40)
-        self.new_drawing_button.setStyleSheet("background-color: lightgreen; font-size: 20px;")
+        # self.new_drawing_button.setStyleSheet("background-color: lightgreen; font-size: 20px;")
         self.new_drawing_button.setToolTip("新繪畫")
         self.new_drawing_button.clicked.connect(self.start_new_drawing)
         toolbar_layout.addWidget(self.new_drawing_button)
