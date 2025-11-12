@@ -108,9 +108,9 @@ class DrawingTypeDialog(QDialog):
         self.drawing_type_combo = QComboBox()
         self.drawing_type_combo.addItems([
             "pretest (練習測試)",  # 🆕 新增選項
-            "DAP (Draw-a-Person Test)",
+            "DAP (Draw-  a-Person Test)",
             "HTP (House-Tree-Person Test)", 
-            "PIR (Person-in-the-Rain Test)"
+            "FD (Free-Drawing Test)"
         ])
         layout.addRow("繪畫類型:", self.drawing_type_combo)
         
@@ -143,8 +143,8 @@ class DrawingTypeDialog(QDialog):
             drawing_type = "DAP"
         elif "HTP" in selected_text:
             drawing_type = "HTP"
-        elif "PIR" in selected_text:
-            drawing_type = "PIR"
+        elif "FD" in selected_text:
+            drawing_type = "FD"
         else:
             drawing_type = "DAP"  # 預設
         

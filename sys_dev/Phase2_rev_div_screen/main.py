@@ -446,7 +446,7 @@ class WacomDrawingCanvas(QWidget):
         toolbar_layout.addWidget(self.eraser_button)
         
         # 新繪畫按鈕
-        self.new_drawing_button = QPushButton("🎨")
+        self.new_drawing_button = QPushButton("➕")
         self.new_drawing_button.setFixedSize(60, 40)
         # self.new_drawing_button.setStyleSheet("background-color: lightgreen; font-size: 20px;")
         self.new_drawing_button.setToolTip("新繪畫")
