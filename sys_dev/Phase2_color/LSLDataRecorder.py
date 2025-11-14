@@ -20,7 +20,7 @@ import numpy as np
 
 @dataclass
 class InkSample:
-    """墨水數據樣本"""
+    """墨水數據樣本（添加顏色）"""
     timestamp: float
     x: float
     y: float
@@ -30,6 +30,8 @@ class InkSample:
     velocity: float
     stroke_id: int
     event_type: int
+    color: str = 'black'
+
 
 
 @dataclass
@@ -118,27 +120,17 @@ class LSLDataRecorder:
         return session_id
     
     def record_ink_sample(self,
-                         timestamp: float,
-                         x: float,
-                         y: float,
-                         pressure: float,
-                         tilt_x: float = 0.0,
-                         tilt_y: float = 0.0,
-                         velocity: float = 0.0,
-                         stroke_id: int = 0,
-                         event_type: int = 0):
-        """
-        記錄墨水數據樣本
-        
-        Args:
-            timestamp: LSL 時間戳
-            x, y: 座標
-            pressure: 壓力
-            tilt_x, tilt_y: 傾斜角度
-            velocity: 速度
-            stroke_id: 筆劃 ID
-            event_type: 事件類型
-        """
+                        timestamp: float,
+                        x: float,
+                        y: float,
+                        pressure: float,
+                        tilt_x: float = 0.0,
+                        tilt_y: float = 0.0,
+                        velocity: float = 0.0,
+                        stroke_id: int = 0,
+                        event_type: int = 0,
+                        color: str = 'black'):  # 🆕
+        """記錄墨水數據樣本（添加顏色）"""
         if not self.is_recording:
             return
         
@@ -151,10 +143,12 @@ class LSLDataRecorder:
             tilt_y=tilt_y,
             velocity=velocity,
             stroke_id=stroke_id,
-            event_type=event_type
+            event_type=event_type,
+            color=color  # 🆕
         )
         
         self.ink_samples.append(sample)
+
     
     def record_marker(self, timestamp: float, marker_text: str):
         """
@@ -456,15 +450,15 @@ class LSLDataRecorder:
         return saved_files
 
     def _save_ink_data_csv_cleaned(self, filepath: Path, cleaned_samples: List[InkSample]):
-        """儲存清理後的墨水數據為 CSV"""
+        """儲存清理後的墨水數據為 CSV（添加顏色欄位）"""
         with open(filepath, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             
-            # 寫入標頭
+            # 寫入標頭（添加 color）
             writer.writerow([
                 'timestamp', 'x', 'y', 'pressure',
                 'tilt_x', 'tilt_y', 'velocity',
-                'stroke_id', 'event_type'
+                'stroke_id', 'event_type', 'color'  # 🆕
             ])
             
             # 寫入清理後的數據
@@ -478,7 +472,8 @@ class LSLDataRecorder:
                     f"{sample.tilt_y:.3f}",
                     f"{sample.velocity:.3f}",
                     sample.stroke_id,
-                    sample.event_type
+                    sample.event_type,
+                    sample.color  # 🆕
                 ])
     
     def _save_ink_data_json_cleaned(self, filepath: Path, cleaned_samples: List[InkSample]):
@@ -515,15 +510,15 @@ class LSLDataRecorder:
                 ])
     
     def _save_ink_data_csv_raw(self, filepath: Path):
-        """儲存原始墨水數據為 CSV（調試用）"""
+        """儲存原始墨水數據為 CSV（添加顏色欄位）"""
         with open(filepath, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             
-            # 寫入標頭
+            # 寫入標頭（添加 color）
             writer.writerow([
                 'timestamp', 'x', 'y', 'pressure',
                 'tilt_x', 'tilt_y', 'velocity',
-                'stroke_id', 'event_type'
+                'stroke_id', 'event_type', 'color'  # 🆕
             ])
             
             # 寫入原始數據
@@ -537,7 +532,8 @@ class LSLDataRecorder:
                     f"{sample.tilt_y:.3f}",
                     f"{sample.velocity:.3f}",
                     sample.stroke_id,
-                    sample.event_type
+                    sample.event_type,
+                    sample.color  # 🆕
                 ])
     
     def _save_markers_csv_raw(self, filepath: Path):

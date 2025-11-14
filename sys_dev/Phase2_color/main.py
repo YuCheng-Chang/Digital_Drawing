@@ -58,6 +58,12 @@ class WacomDrawingCanvas(QWidget):
         self.current_eraser_points = []
         self.next_stroke_id = 0
         
+        # 🆕 顏色相關屬性
+        self.current_color = QColor('#000000')  # ✅ 使用 hex code 創建
+        self.current_color_name = self.current_color.name()  # '#000000'
+
+
+        
         # 🆕 首先獲取受試者資訊
         if not self.get_subject_info():
             sys.exit()
@@ -361,7 +367,7 @@ class WacomDrawingCanvas(QWidget):
 
     
     def _on_point_processed_callback(self, point_data):
-        """處理點數據並推送到 LSL"""
+        """處理點數據並推送到 LSL（使用當前顏色）"""
         self.lsl.process_ink_point(
             x=point_data['x'],
             y=point_data['y'],
@@ -370,14 +376,14 @@ class WacomDrawingCanvas(QWidget):
             tilt_y=point_data.get('tilt_y', 0),
             velocity=point_data.get('velocity', 0),
             is_stroke_start=point_data.get('is_stroke_start', False),
-            is_stroke_end=point_data.get('is_stroke_end', False)
+            is_stroke_end=point_data.get('is_stroke_end', False),
+            color=self.current_color_name  # ✅ 使用 main.py 的當前顏色
         )
     
 
     def _on_stroke_completed_callback(self, stroke_data):
-        """筆劃完成時的處理"""
+        """筆劃完成時的處理（添加顏色資訊）"""
         try:
-            # ✅✅✅ 使用 LSL 的 stroke_id（這是唯一的真相來源）
             stroke_id = stroke_data['stroke_id']
             stroke_points = stroke_data['points']
             
@@ -395,7 +401,7 @@ class WacomDrawingCanvas(QWidget):
                 for p in stroke_points
             ]
             
-            # 創建元數據（使用 LSL 的 stroke_id）
+            # 創建元數據（添加顏色）
             metadata = StrokeMetadata(
                 stroke_id=stroke_id,
                 tool_type=ToolType.PEN,
@@ -406,18 +412,19 @@ class WacomDrawingCanvas(QWidget):
                 deleted_at=None
             )
             
-            # ✅✅✅ 添加到 all_strokes（使用 LSL 的 stroke_id）
+            # 添加到 all_strokes（包含顏色）
             self.all_strokes.append({
                 'stroke_id': stroke_id,
                 'tool_type': ToolType.PEN,
                 'points': pixel_points,
                 'metadata': metadata,
-                'is_deleted': False
+                'is_deleted': False,
+                'color': self.current_color_name  # 🆕 保存顏色
             })
             
-            self.logger.info(f"📝 筆劃已保存: stroke_id={stroke_id}, points={len(pixel_points)}")
+            self.logger.info(f"📝 筆劃已保存: stroke_id={stroke_id}, points={len(pixel_points)}, color={self.current_color_name}")
             
-            # ✅✅✅ 立即重繪畫布
+            # 立即重繪畫布
             self.update()
             
         except Exception as e:
@@ -425,8 +432,11 @@ class WacomDrawingCanvas(QWidget):
             import traceback
             self.logger.error(traceback.format_exc())
 
+
     def _setup_toolbar(self):
-        """設置工具欄（修改版：只顯示圖示，懸停顯示提示）"""
+        """設置工具欄（添加顏色選擇按鈕）"""
+        from PyQt5.QtWidgets import QColorDialog
+        
         toolbar_layout = QHBoxLayout()
         
         # 筆工具按鈕
@@ -440,15 +450,21 @@ class WacomDrawingCanvas(QWidget):
         # 橡皮擦按鈕
         self.eraser_button = QPushButton("🧈")
         self.eraser_button.setFixedSize(60, 40)
-        # self.eraser_button.setStyleSheet("font-size: 20px;")
         self.eraser_button.setToolTip("橡皮擦")
         self.eraser_button.clicked.connect(lambda: self.switch_tool(ToolType.ERASER))
         toolbar_layout.addWidget(self.eraser_button)
         
+        # 🆕 顏色選擇按鈕
+        self.color_button = QPushButton("🎨")
+        self.color_button.setFixedSize(60, 40)
+        self.color_button.setStyleSheet(f"background-color: {self.current_color.name()};")
+        self.color_button.setToolTip("選擇顏色")
+        self.color_button.clicked.connect(self.choose_color)
+        toolbar_layout.addWidget(self.color_button)
+        
         # 新繪畫按鈕
         self.new_drawing_button = QPushButton("➕")
         self.new_drawing_button.setFixedSize(60, 40)
-        # self.new_drawing_button.setStyleSheet("background-color: lightgreen; font-size: 20px;")
         self.new_drawing_button.setToolTip("新繪畫")
         self.new_drawing_button.clicked.connect(self.start_new_drawing)
         toolbar_layout.addWidget(self.new_drawing_button)
@@ -469,6 +485,7 @@ class WacomDrawingCanvas(QWidget):
         main_layout.setSpacing(0)
         
         self.setLayout(main_layout)
+
       
     def _finish_current_drawing(self):
         """完成當前繪畫的保存工作"""
@@ -716,17 +733,18 @@ class WacomDrawingCanvas(QWidget):
 
     
     def _handle_pen_input(self, x_pixel, y_pixel, x_normalized, y_normalized, current_pressure, event):
-        """處理筆輸入"""
+        """處理筆輸入（添加顏色資訊）"""
         try:
             if current_pressure > 0:
-                # ✅✅✅ 創建點數據
+                # ✅ 創建點數據（添加顏色）
                 point_data = {
                     'x': x_normalized,
                     'y': y_normalized,
                     'pressure': current_pressure,
                     'timestamp': self.lsl.stream_manager.get_stream_time(),
                     'tilt_x': event.xTilt(),
-                    'tilt_y': event.yTilt()
+                    'tilt_y': event.yTilt(),
+                    'color': self.current_color_name  # 🆕 添加顏色
                 }
                 
                 if not self.pen_is_touching:
@@ -734,17 +752,17 @@ class WacomDrawingCanvas(QWidget):
                         f"🎨 筆劃開始（第一個點）: "
                         f"像素=({x_pixel:.1f}, {y_pixel:.1f}), "
                         f"歸一化=({x_normalized:.3f}, {y_normalized:.3f}), "
-                        f"pressure={current_pressure:.3f}"
+                        f"pressure={current_pressure:.3f}, "
+                        f"color={self.current_color_name}"  # 🆕
                     )
                     self.pen_is_touching = True
-                    # 🆕 記錄開始時間
                     self._stroke_start_time = self.lsl.stream_manager.get_stream_time()
                 
-                # ✅✅✅ 關鍵修復：發送點數據到處理系統
+                # 發送點數據到處理系統
                 self.last_point_data = point_data
                 self.ink_system.process_raw_point(point_data)
                 
-                # ✅ 添加到 Canvas 緩存（僅用於即時顯示）
+                # 添加到 Canvas 緩存（僅用於即時顯示）
                 self.current_stroke_points.append((x_pixel, y_pixel, current_pressure))
                 self.total_points += 1
             
@@ -756,39 +774,31 @@ class WacomDrawingCanvas(QWidget):
                         f"歸一化=({x_normalized:.3f}, {y_normalized:.3f})"
                     )
                     
-                    # ❌❌❌ 移除這段：不要在這裡添加到 all_strokes
-                    # stroke_id = len(self.all_strokes)
-                    # self.all_strokes.append(...)
-                    
-                    # ✅ 只發送結束點到處理系統（由回調統一處理）
+                    # 發送結束點到處理系統（包含顏色）
                     point_data = {
                         'x': x_normalized,
                         'y': y_normalized,
                         'pressure': 0.0,
                         'timestamp': self.lsl.stream_manager.get_stream_time(),
                         'tilt_x': event.xTilt(),
-                        'tilt_y': event.yTilt()
+                        'tilt_y': event.yTilt(),
+                        'color': self.current_color_name  # 🆕
                     }
                     self.ink_system.process_raw_point(point_data)
                     
-                    # ✅ 清空 Canvas 緩存（等待回調添加到 all_strokes）
+                    # 清空 Canvas 緩存
                     self.current_stroke_points = []
                     self.stroke_count += 1
                     
                     self.pen_is_touching = False
                     self.current_pressure = 0.0
                     self.last_point_data = None
-                    
-                    # 立即重繪（此時 all_strokes 還沒更新，但會在回調後更新）
-                    # self.update()  # ← 移除這行，讓回調觸發重繪
         
         except Exception as e:
             self.logger.error(f"❌ 處理筆輸入失敗: {e}")
             import traceback
             self.logger.error(traceback.format_exc())
-
-
-    
+  
     def _handle_eraser_input(self, x_pixel, y_pixel, current_pressure, event):
         """處理橡皮擦輸入"""
         try:
@@ -928,9 +938,66 @@ class WacomDrawingCanvas(QWidget):
             import traceback
             self.logger.error(traceback.format_exc())
 
-    
+    def choose_color(self):
+        """🆕 選擇顏色"""
+        from PyQt5.QtWidgets import QColorDialog
+        
+        try:
+            # 🔧 強制完成當前筆劃
+            if self.pen_is_touching and self.current_stroke_points:
+                self.logger.info("🎨 切換顏色前強制完成當前筆劃")
+                
+                if self.last_point_data is not None:
+                    final_point = self.last_point_data.copy()
+                    final_point['pressure'] = 0.0
+                    final_point['timestamp'] = self.lsl.stream_manager.get_stream_time()
+                    self.ink_system.process_raw_point(final_point)
+                    
+                    import time
+                    time.sleep(0.05)
+            
+            # 清理狀態
+            self.current_stroke_points = []
+            self.last_point_data = None
+            self.pen_is_touching = False
+            self.current_pressure = 0.0
+            
+            if hasattr(self.ink_system, 'point_processor'):
+                self.ink_system.point_processor.clear_history()
+            
+            if hasattr(self.ink_system, 'stroke_detector'):
+                from StrokeDetector import StrokeState
+                self.ink_system.stroke_detector.current_state = StrokeState.IDLE
+                self.ink_system.stroke_detector.current_stroke_points = []
+            
+            # 記錄切換前的顏色
+            old_color = self.current_color_name
+            
+            # 打開顏色選擇對話框
+            color = QColorDialog.getColor(self.current_color, self, "選擇畫筆顏色")
+            
+            if color.isValid():
+                # 🆕🆕🆕 關鍵修改：更新為 hex code
+                self.current_color = color
+                self.current_color_name = color.name()  # ✅ 這裡已經是 hex code（如 '#ff0000'）
+                
+                # 更新按鈕背景色
+                self.color_button.setStyleSheet(f"background-color: {self.current_color_name};")
+                
+                # 🆕 記錄顏色切換事件到 LSL
+                self.lsl.mark_color_switch(old_color, self.current_color_name)
+                
+                self.logger.info(f"🎨 顏色已切換: {old_color} → {self.current_color_name}")
+            else:
+                self.logger.info("❌ 用戶取消顏色選擇")
+                
+        except Exception as e:
+            self.logger.error(f"❌ 選擇顏色失敗: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
+
     def export_canvas_image(self, output_path: str):
-        """將畫布匯出為 PNG 圖片"""
+        """將畫布匯出為 PNG 圖片（使用顏色）"""
         try:
             from PyQt5.QtGui import QPixmap
             
@@ -943,12 +1010,16 @@ class WacomDrawingCanvas(QWidget):
             painter = QPainter(pixmap)
             painter.setRenderHint(QPainter.Antialiasing)
             
-            pen = QPen(QColor(0, 0, 0), 2)
-            painter.setPen(pen)
-            
             for stroke in self.all_strokes:
                 if stroke.get('is_deleted', False):
                     continue
+                
+                # 🆕 使用筆劃的顏色（直接使用 hex code）
+                stroke_color_name = stroke.get('color', '#000000')
+                stroke_color = QColor(stroke_color_name)  # ✅ 直接創建 QColor
+                
+                pen = QPen(stroke_color, 2)
+                painter.setPen(pen)
                 
                 points = stroke['points']
                 for i in range(len(points) - 1):
@@ -978,6 +1049,7 @@ class WacomDrawingCanvas(QWidget):
             import traceback
             self.logger.error(traceback.format_exc())
             return False
+
 
     def closeEvent(self, event):
         """視窗關閉時的處理（簡化版）"""
@@ -1159,20 +1231,26 @@ class WacomDrawingCanvas(QWidget):
             self.logger.error(traceback.format_exc())
             event.accept()
 
+
     def paintEvent(self, event):
-        """繪製筆劃"""
+        """繪製筆劃（使用正確的顏色）"""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         
         toolbar_height = 50
         painter.translate(0, toolbar_height)
         
-        pen = QPen(QColor(0, 0, 0), 2)
-        painter.setPen(pen)
-        
+        # 繪製已完成的筆劃（使用各自的顏色）
         for stroke in self.all_strokes:
             if stroke.get('is_deleted', False):
                 continue
+            
+            # 🆕 獲取筆劃的顏色（直接使用 hex code）
+            stroke_color_name = stroke.get('color', '#000000')
+            stroke_color = QColor(stroke_color_name)  # ✅ 直接創建 QColor
+            
+            pen = QPen(stroke_color, 2)
+            painter.setPen(pen)
             
             points = stroke['points']
             for i in range(len(points) - 1):
@@ -1187,8 +1265,9 @@ class WacomDrawingCanvas(QWidget):
                     int(x2), int(y2)
                 )
         
+        # 繪製當前筆劃（使用當前選擇的顏色）
         if self.current_tool == ToolType.PEN and self.current_stroke_points:
-            pen = QPen(QColor(0, 100, 255), 2)
+            pen = QPen(self.current_color, 2)
             painter.setPen(pen)
             
             for i in range(len(self.current_stroke_points) - 1):
@@ -1199,6 +1278,7 @@ class WacomDrawingCanvas(QWidget):
                 painter.setPen(pen)
                 painter.drawLine(int(x1), int(y1), int(x2), int(y2))
         
+        # 繪製橡皮擦
         if self.current_tool == ToolType.ERASER and self.current_eraser_points:
             pen = QPen(QColor(255, 0, 0, 100), 2)
             painter.setPen(pen)
@@ -1211,33 +1291,7 @@ class WacomDrawingCanvas(QWidget):
                     int(self.eraser_tool.radius * 2),
                     int(self.eraser_tool.radius * 2)
                 )
-        
-        # 🔧 修改狀態列顯示，添加繪畫類型
-        painter.setPen(QPen(QColor(100, 100, 100)))
-        
-        drawing_type = self.current_drawing_info.get('drawing_type', 'N/A') if self.current_drawing_info else 'N/A'
-        
-        if self.last_point_data:
-            x_pixel = self.last_point_data['x'] * self.width()
-            y_pixel = self.last_point_data['y'] * self.height()
-            stats_text = (
-                f"類型: {drawing_type} | "  # 🆕 添加繪畫類型
-                f"工具: {self.current_tool.value} | "
-                f"筆劃數: {len([s for s in self.all_strokes if not s['is_deleted']])} | "
-                f"總點數: {self.total_points} | "
-                f"壓力: {self.current_pressure:.3f} | "
-                f"位置: ({x_pixel:.0f}, {y_pixel:.0f})"
-            )
-        else:
-            stats_text = (
-                f"類型: {drawing_type} | "  # 🆕 添加繪畫類型
-                f"工具: {self.current_tool.value} | "
-                f"筆劃數: {len([s for s in self.all_strokes if not s['is_deleted']])} | "
-                f"總點數: {self.total_points} | "
-                f"壓力: {self.current_pressure:.3f} | 位置: N/A"
-            )
-        
-        # painter.drawText(10, 20, stats_text)
+
         
     def update_stats_display(self):
         """更新統計顯示"""

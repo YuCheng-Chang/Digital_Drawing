@@ -1,0 +1,57 @@
+================================================================================
+LSL Recording Summary (Extended Time-Range Based Cleaned Data)
+================================================================================
+
+Session ID: 1_pretest
+Recording Start: 2025-11-14T17:19:46.750069
+Recording End: 2025-11-14T17:20:25.622623
+Duration: 38.87 seconds
+
+Data Cleaning Summary:
+  Cleaning Method: Time-Range Based (Extended)
+  Cleaning Rules:
+    1. stroke_start → tool_switch|from:pen|to:eraser (delete by time range)
+    2. stroke_start → tool_switch|from:pen|to:pen (delete by time range)
+  Original Markers: 23
+  Cleaned Markers: 23
+  Removed Markers: 0
+  Original Ink Samples: 769
+  Cleaned Ink Samples: 769
+  Removed Ink Samples: 0
+    • pen→eraser: 0 samples
+    • pen→pen: 0 samples
+
+Final Data Counts:
+  Total Ink Samples: 769
+  Total Markers: 23
+
+Cleaned Ink Data Statistics:
+  Time range: 3848.269 - 3875.388 s
+  Average sampling rate: 28.4 Hz
+  Pressure range: 0.000 - 0.873
+  Average pressure: 0.758
+
+Event Markers (Extended Time-Range Based Cleaned):
+  [3843.733] recording_start
+  [3848.269] stroke_start_0
+  [3848.713] stroke_end_0
+  [3849.405] stroke_start_1
+  [3849.836] stroke_end_1
+  [3850.597] stroke_start_2
+  [3850.957] stroke_end_2
+  [3851.434] stroke_start_3
+  [3851.770] stroke_end_3
+  [3852.976] tool_switch|from:pen|to:eraser
+  [3854.121] eraser_0|deleted_strokes:[0, 2]
+  [3858.221] color_switch|from:#000000|to:#ffaaff
+  [3859.521] eraser_0|deleted_strokes:[1]
+  [3861.008] tool_switch|from:eraser|to:pen
+  [3861.614] stroke_start_4
+  [3862.154] stroke_end_4
+  [3866.942] color_switch|from:#ffaaff|to:#f6ffb9
+  [3867.802] stroke_start_5
+  [3868.330] stroke_end_5
+  [3873.728] color_switch|from:#f6ffb9|to:#e8e4ff
+  [3874.803] stroke_start_6
+  [3875.388] stroke_end_6
+  [3882.553] recording_end

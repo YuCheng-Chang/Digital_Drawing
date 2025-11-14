@@ -84,8 +84,9 @@ class LSLIntegration:
                         tilt_y: float = 0.0,
                         velocity: float = 0.0,
                         is_stroke_start: bool = False,
-                        is_stroke_end: bool = False):
-        """處理墨水點數據"""
+                        is_stroke_end: bool = False,
+                        color: str = 'black'):  # 🆕 添加顏色參數
+        """處理墨水點數據（添加顏色）"""
         if not self.is_active:
             return
         
@@ -98,7 +99,6 @@ class LSLIntegration:
             
             if is_stroke_start:
                 event_type = 1
-                # 🆕 記錄這是一個有效的筆劃開始
                 self._stroke_has_started = True
                 
                 marker = f"stroke_start_{self.current_stroke_id}"
@@ -107,24 +107,21 @@ class LSLIntegration:
                 self.logger.debug(f"Stroke started: {self.current_stroke_id}")
                 
             elif is_stroke_end:
-                # 🗑️ 檢查是否為無效的結束事件（沒有對應的開始）
                 if not self._stroke_has_started:
                     self.logger.info(
                         f"🗑️ 跳過無效的筆劃結束事件: stroke_id={self.current_stroke_id}, "
                         f"沒有對應的筆劃開始"
                     )
-                    return  # ✅ 直接返回，不記錄這個點
+                    return
                 
                 event_type = 2
                 
-                # 推送筆劃結束標記
                 marker = f"stroke_end_{self.current_stroke_id}"
                 self.stream_manager.push_marker(marker, timestamp)
                 self.data_recorder.record_marker(timestamp, marker)
                 self.logger.debug(f"Stroke ended: {self.current_stroke_id}")
             
-            # ✅✅✅ 關鍵修改：先推送數據，再遞增 ID
-            # 推送墨水數據到串流
+            # 推送墨水數據到串流（添加顏色）
             self.stream_manager.push_ink_sample(
                 x=x,
                 y=y,
@@ -132,12 +129,13 @@ class LSLIntegration:
                 tilt_x=tilt_x,
                 tilt_y=tilt_y,
                 velocity=velocity,
-                stroke_id=self.current_stroke_id,  # ← 使用當前 ID
+                stroke_id=self.current_stroke_id,
                 event_type=event_type,
-                timestamp=timestamp
+                timestamp=timestamp,
+                color=color  # 🆕
             )
             
-            # 記錄到本地
+            # 記錄到本地（添加顏色）
             self.data_recorder.record_ink_sample(
                 timestamp=timestamp,
                 x=x,
@@ -146,17 +144,41 @@ class LSLIntegration:
                 tilt_x=tilt_x,
                 tilt_y=tilt_y,
                 velocity=velocity,
-                stroke_id=self.current_stroke_id,  # ← 使用當前 ID
-                event_type=event_type
+                stroke_id=self.current_stroke_id,
+                event_type=event_type,
+                color=color  # 🆕
             )
             
-            # ✅✅✅ 關鍵修改：在推送完數據後才遞增 ID
             if is_stroke_end:
                 self._stroke_has_started = False
-                self.current_stroke_id += 1  # ← 移到這裡
+                self.current_stroke_id += 1
             
         except Exception as e:
             self.logger.error(f"Error processing ink point: {e}")
+
+
+    def mark_color_switch(self, from_color: str, to_color: str):
+        """
+        🆕 記錄顏色切換事件
+        
+        Args:
+            from_color: 切換前的顏色
+            to_color: 切換後的顏色
+        """
+        if not self.is_active:
+            return
+        
+        try:
+            timestamp = self.stream_manager.get_stream_time()
+            marker = f"color_switch|from:{from_color}|to:{to_color}"
+            
+            self.stream_manager.push_marker(marker, timestamp)
+            self.data_recorder.record_marker(timestamp, marker)
+            
+            self.logger.info(f"🎨 顏色切換事件已記錄: {from_color} → {to_color}")
+            
+        except Exception as e:
+            self.logger.error(f"Error marking color switch: {e}")
 
     def mark_tool_switch(self, from_tool: str, to_tool: str):
         """

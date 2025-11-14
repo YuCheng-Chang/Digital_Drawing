@@ -1,6 +1,6 @@
 # reconstruct.py
 """
-從 ink_data.csv 和 markers.csv 重建數位墨水繪圖（支援橡皮擦）
+從 ink_data.csv 和 markers.csv 重建數位墨水繪圖（支援橡皮擦 + 顏色）
 """
 import pandas as pd
 import numpy as np
@@ -12,33 +12,7 @@ import os
 from pathlib import Path
 import logging
 import re
-
-# 導入配置
-from Config import ProcessingConfig
-
-# 設置日誌
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger('InkReconstructor')
-
-
-# reconstruct.py
-"""
-從 ink_data.csv 和 markers.csv 重建數位墨水繪圖（支援橡皮擦）
-"""
-import pandas as pd
-import numpy as np
-from PyQt5.QtWidgets import QApplication, QFileDialog
-from PyQt5.QtGui import QPainter, QPen, QColor, QPixmap
-from PyQt5.QtCore import Qt
-import sys
-import os
-from pathlib import Path
-import logging
-import re
-import json  # 🆕 添加 json 導入
+import json
 
 # 導入配置
 from Config import ProcessingConfig
@@ -52,7 +26,7 @@ logger = logging.getLogger('InkReconstructor')
 
 
 class InkDrawingReconstructor:
-    """從 CSV 重建數位墨水繪圖（支援橡皮擦）"""
+    """從 CSV 重建數位墨水繪圖（支援橡皮擦 + 顏色）"""
     
     def __init__(self, canvas_width: int = None, canvas_height: int = None):
         """
@@ -72,7 +46,7 @@ class InkDrawingReconstructor:
     
     def load_metadata(self, csv_dir: str) -> dict:
         """
-        🆕 讀取 metadata.json
+        讀取 metadata.json
         
         Args:
             csv_dir: CSV 檔案所在目錄
@@ -113,7 +87,7 @@ class InkDrawingReconstructor:
     
     def set_canvas_size_from_metadata(self, metadata: dict) -> bool:
         """
-        🆕 從 metadata 設置畫布尺寸
+        從 metadata 設置畫布尺寸
         
         Args:
             metadata: metadata 字典
@@ -150,6 +124,15 @@ class InkDrawingReconstructor:
             
             if missing_columns:
                 raise ValueError(f"CSV 缺少必要欄位: {missing_columns}")
+            
+            # 🆕 檢查是否有顏色欄位
+            if 'color' in df.columns:
+                logger.info(f"✅ 檢測到顏色欄位")
+                unique_colors = df['color'].unique()
+                logger.info(f"   - 使用的顏色: {list(unique_colors)}")
+            else:
+                logger.warning(f"⚠️ 沒有顏色欄位，將使用預設黑色")
+                df['color'] = 'black'
             
             logger.info(f"✅ 成功讀取 {len(df)} 個點")
             logger.info(f"   - 欄位: {list(df.columns)}")
@@ -195,9 +178,16 @@ class InkDrawingReconstructor:
             
             logger.info(f"✅ 成功讀取 {len(df)} 個標記")
             
-            # 顯示標記內容
-            for idx, row in df.iterrows():
-                logger.info(f"   - {row['marker_text']}")
+            # 統計不同類型的標記
+            marker_types = {
+                'stroke_start': len(df[df['marker_text'].str.contains('stroke_start_', na=False)]),
+                'stroke_end': len(df[df['marker_text'].str.contains('stroke_end_', na=False)]),
+                'eraser': len(df[df['marker_text'].str.contains('eraser_', na=False)]),
+                'color_switch': len(df[df['marker_text'].str.contains('color_switch', na=False)]),
+                'canvas_cleared': len(df[df['marker_text'] == 'canvas_cleared'])
+            }
+            
+            logger.info(f"   - 標記統計: {marker_types}")
             
             return df
             
@@ -211,7 +201,7 @@ class InkDrawingReconstructor:
         
         Args:
             markers_df: 標記數據 DataFrame
-            strokes: 所有筆劃字典 {stroke_id: [(x, y, pressure), ...]}
+            strokes: 所有筆劃字典 {stroke_id: {'points': [...], 'color': '...'}}
             
         Returns:
             set: 應該被清除的筆劃 ID 集合
@@ -257,7 +247,6 @@ class InkDrawingReconstructor:
             
         Returns:
             dict: {eraser_id: [deleted_stroke_ids]}
-            例如: {0: [0], 1: [2, 3]}
         """
         eraser_events = {}
         
@@ -278,14 +267,13 @@ class InkDrawingReconstructor:
                 else:
                     deleted_stroke_ids = []
                 
-                # 🔧 修復：累積模式，而不是覆蓋
+                # 累積模式
                 if eraser_id in eraser_events:
                     eraser_events[eraser_id].extend(deleted_stroke_ids)
                     logger.info(f"🧹 橡皮擦事件 {eraser_id}: 累積刪除筆劃 {deleted_stroke_ids} (總計: {eraser_events[eraser_id]})")
                 else:
                     eraser_events[eraser_id] = deleted_stroke_ids
                     logger.info(f"🧹 橡皮擦事件 {eraser_id}: 刪除筆劃 {deleted_stroke_ids}")
-
         
         if not eraser_events:
             logger.info("ℹ️ 沒有檢測到橡皮擦事件")
@@ -294,17 +282,18 @@ class InkDrawingReconstructor:
     
     def parse_strokes(self, df: pd.DataFrame) -> dict:
         """
-        根據 event_type 和 stroke_id 分割筆劃
+        根據 event_type 和 stroke_id 分割筆劃（🆕 添加顏色支援）
         
         Args:
             df: 包含墨水數據的 DataFrame
             
         Returns:
-            dict: {stroke_id: [(x, y, pressure), ...]}
+            dict: {stroke_id: {'points': [(x, y, pressure), ...], 'color': '#rrggbb'}}
         """
         strokes = {}
         current_stroke_id = None
         current_stroke = []
+        current_color = 'black'  # 🆕 追蹤當前顏色
         
         # 檢測座標是否已經是像素座標
         x_max = df['x'].max()
@@ -319,13 +308,13 @@ class InkDrawingReconstructor:
         for idx, row in df.iterrows():
             event_type = row['event_type']
             stroke_id = row.get('stroke_id', None)
+            color = row.get('color', 'black')  # 🆕 讀取顏色
             
-            # 🔧 修復：跳過 stroke_id 為 None 或 NaN 的點
+            # 跳過無效的 stroke_id
             if stroke_id is None or pd.isna(stroke_id):
                 logger.warning(f"⚠️ 跳過無效的 stroke_id: {stroke_id} at index {idx}")
                 continue
             
-            # 🔧 修復：確保 stroke_id 是整數
             stroke_id = int(stroke_id)
             
             # 根據座標類型決定是否轉換
@@ -340,58 +329,70 @@ class InkDrawingReconstructor:
             
             if event_type == 1:  # 筆劃開始
                 if current_stroke:  # 保存前一個筆劃
-                    strokes[current_stroke_id] = current_stroke
+                    strokes[current_stroke_id] = {
+                        'points': current_stroke,
+                        'color': current_color  # 🆕 保存顏色
+                    }
                 
                 current_stroke_id = stroke_id
                 current_stroke = [(x_pixel, y_pixel, pressure)]
+                current_color = color  # 🆕 更新當前顏色
                 
             elif event_type == 0:  # 筆劃中間點
                 current_stroke.append((x_pixel, y_pixel, pressure))
                 
             elif event_type == 2:  # 筆劃結束
                 current_stroke.append((x_pixel, y_pixel, pressure))
-                strokes[current_stroke_id] = current_stroke
+                strokes[current_stroke_id] = {
+                    'points': current_stroke,
+                    'color': current_color  # 🆕 保存顏色
+                }
                 current_stroke = []
                 current_stroke_id = None
         
         # 處理未完成的筆劃
         if current_stroke and current_stroke_id is not None:
-            strokes[current_stroke_id] = current_stroke
+            strokes[current_stroke_id] = {
+                'points': current_stroke,
+                'color': current_color  # 🆕 保存顏色
+            }
         
-        # 🔧 修復：移除 None 鍵（如果存在）
+        # 移除 None 鍵
         strokes = {k: v for k, v in strokes.items() if k is not None}
         
         logger.info(f"✅ 解析出 {len(strokes)} 個筆劃")
         
         # 統計信息
-        total_points = sum(len(stroke) for stroke in strokes.values())
+        total_points = sum(len(stroke['points']) for stroke in strokes.values())
         logger.info(f"   - 總點數: {total_points}")
+        
         if strokes:
             avg_points = total_points / len(strokes)
             logger.info(f"   - 平均每筆劃點數: {avg_points:.1f}")
             
-            # 🔧 修復：過濾掉 None 值後再計算範圍
             valid_stroke_ids = [sid for sid in strokes.keys() if sid is not None]
             if valid_stroke_ids:
                 logger.info(f"   - 筆劃 ID 範圍: {min(valid_stroke_ids)} ~ {max(valid_stroke_ids)}")
+            
+            # 🆕 統計顏色使用
+            colors_used = set(stroke['color'] for stroke in strokes.values())
+            logger.info(f"   - 使用的顏色: {list(colors_used)}")
         
         # 顯示像素座標範圍
         if strokes:
-            all_x = [p[0] for stroke in strokes.values() for p in stroke]
-            all_y = [p[1] for stroke in strokes.values() for p in stroke]
+            all_x = [p[0] for stroke in strokes.values() for p in stroke['points']]
+            all_y = [p[1] for stroke in strokes.values() for p in stroke['points']]
             logger.info(f"   - 像素 X 範圍: [{min(all_x):.1f}, {max(all_x):.1f}]")
             logger.info(f"   - 像素 Y 範圍: [{min(all_y):.1f}, {max(all_y):.1f}]")
         
         return strokes
-
-
     
     def apply_deletion_events(self, strokes: dict, eraser_events: dict, cleared_strokes: set) -> dict:
         """
         應用刪除事件（橡皮擦 + 清空畫布）
         
         Args:
-            strokes: {stroke_id: [(x, y, pressure), ...]}
+            strokes: {stroke_id: {'points': [...], 'color': '...'}}
             eraser_events: {eraser_id: [deleted_stroke_ids]}
             cleared_strokes: 清空畫布事件刪除的筆劃 ID 集合
             
@@ -399,7 +400,7 @@ class InkDrawingReconstructor:
             dict: 刪除後的筆劃字典
         """
         # 收集所有被刪除的筆劃 ID
-        all_deleted_ids = set(cleared_strokes)  # 先加入清空畫布刪除的筆劃
+        all_deleted_ids = set(cleared_strokes)
         
         # 加入橡皮擦刪除的筆劃
         for eraser_id, deleted_ids in eraser_events.items():
@@ -431,30 +432,53 @@ class InkDrawingReconstructor:
         logger.info(f"✅ 刪除了 {deleted_count} 個筆劃，剩餘 {len(remaining_strokes)} 個筆劃")
         
         if remaining_strokes:
-            # 🔧 修復：過濾掉 None 值後再排序
             valid_remaining_ids = [sid for sid in remaining_strokes.keys() if sid is not None]
             if valid_remaining_ids:
                 logger.info(f"   - 剩餘筆劃 ID: {sorted(valid_remaining_ids)}")
         
         return remaining_strokes
-
-
+    
+    def _parse_color(self, color_str: str) -> QColor:
+        """
+        🆕 解析顏色字符串為 QColor
+        
+        Args:
+            color_str: 顏色字符串（如 'black', '#000000', '#ff0000'）
+            
+        Returns:
+            QColor: Qt 顏色對象
+        """
+        # 如果是十六進制格式（如 '#ff0000'）
+        if color_str.startswith('#'):
+            return QColor(color_str)
+        
+        # 如果是顏色名稱（如 'black', 'red'）
+        color_map = {
+            'black': QColor(0, 0, 0),
+            'red': QColor(255, 0, 0),
+            'blue': QColor(0, 0, 255),
+            'green': QColor(0, 128, 0),
+            'orange': QColor(255, 165, 0),
+            'purple': QColor(128, 0, 128),
+        }
+        
+        return color_map.get(color_str.lower(), QColor(0, 0, 0))  # 預設黑色
     
     def reconstruct_drawing(self, strokes: dict, output_path: str) -> bool:
         """
-        重建繪圖並保存為 PNG（支援單點筆畫 + 極短筆畫 + 處理壓力為0的結束點）
+        重建繪圖並保存為 PNG（🆕 支援顏色）
         
         Args:
-            strokes: 筆劃字典 {stroke_id: [(x, y, pressure), ...]}
+            strokes: 筆劃字典 {stroke_id: {'points': [(x, y, pressure), ...], 'color': '#rrggbb'}}
             output_path: 輸出 PNG 路徑
             
         Returns:
             bool: 是否成功
         """
         try:
-            logger.info(f"開始重建繪圖...")
+            logger.info(f"開始重建繪圖（支援顏色）...")
             
-            # 🔧 修復：過濾掉 None 鍵
+            # 過濾掉 None 鍵
             strokes = {k: v for k, v in strokes.items() if k is not None}
             
             if not strokes:
@@ -476,38 +500,42 @@ class InkDrawingReconstructor:
             
             # 繪製每個筆劃（按 stroke_id 排序）
             for stroke_id in sorted(strokes.keys()):
-                stroke = strokes[stroke_id]
+                stroke_data = strokes[stroke_id]
+                stroke_points = stroke_data['points']
+                stroke_color_str = stroke_data.get('color', 'black')  # 🆕 獲取顏色
                 
-                if len(stroke) == 0:
+                if len(stroke_points) == 0:
                     logger.warning(f"⚠️ 筆劃 {stroke_id} 沒有點，跳過")
                     continue
                 
-                # ✅✅✅ 計算筆劃的平均壓力（排除壓力為0的點）
-                pressures = [p for _, _, p in stroke if p > 0]
+                # 🆕 解析顏色
+                stroke_color = self._parse_color(stroke_color_str)
+                
+                # 計算筆劃的平均壓力（排除壓力為0的點）
+                pressures = [p for _, _, p in stroke_points if p > 0]
                 if pressures:
                     avg_pressure = sum(pressures) / len(pressures)
                 else:
-                    # 如果所有點的壓力都是0，使用預設值
                     avg_pressure = 0.5
                 
-                # ✅✅✅ 計算筆劃的實際移動距離
-                all_x = [x for x, _, _ in stroke]
-                all_y = [y for _, y, _ in stroke]
+                # 計算筆劃的實際移動距離
+                all_x = [x for x, _, _ in stroke_points]
+                all_y = [y for _, y, _ in stroke_points]
                 x_range = max(all_x) - min(all_x)
                 y_range = max(all_y) - min(all_y)
                 max_distance = max(x_range, y_range)
                 
-                # ✅✅✅ 如果筆劃移動距離 < 3 像素，視為單點筆畫
+                # 如果筆劃移動距離 < 3 像素，視為單點筆畫
                 if max_distance < 3.0:
-                    # 計算中心點（使用所有點的平均座標）
+                    # 計算中心點
                     center_x = sum(all_x) / len(all_x)
                     center_y = sum(all_y) / len(all_y)
                     
                     # 使用平均壓力計算寬度
                     width = max(3.0, 1 + avg_pressure * 5)
                     
-                    # 設置畫筆
-                    pen = QPen(QColor(0, 0, 0))  # 黑色
+                    # 🆕 設置畫筆顏色
+                    pen = QPen(stroke_color)
                     pen.setWidthF(width)
                     pen.setCapStyle(Qt.RoundCap)
                     painter.setPen(pen)
@@ -518,27 +546,29 @@ class InkDrawingReconstructor:
                     logger.info(f"✅ 繪製極短筆畫（視為點）: stroke_id={stroke_id}, "
                             f"pos=({center_x:.1f}, {center_y:.1f}), "
                             f"width={width:.1f}, "
+                            f"color={stroke_color_str}, "
                             f"max_distance={max_distance:.2f}px, "
-                            f"points={len(stroke)}")
+                            f"points={len(stroke_points)}")
                 
                 else:
-                    # ✅ 正常筆畫：繪製線段
+                    # 正常筆畫：繪製線段
                     logger.info(f"✅ 繪製正常筆畫: stroke_id={stroke_id}, "
-                            f"points={len(stroke)}, "
+                            f"points={len(stroke_points)}, "
+                            f"color={stroke_color_str}, "
                             f"distance={max_distance:.1f}px")
                     
-                    for i in range(len(stroke) - 1):
-                        x1, y1, p1 = stroke[i]
-                        x2, y2, p2 = stroke[i + 1]
+                    for i in range(len(stroke_points) - 1):
+                        x1, y1, p1 = stroke_points[i]
+                        x2, y2, p2 = stroke_points[i + 1]
                         
-                        # ✅✅✅ 使用平均壓力來計算寬度
+                        # 使用平均壓力來計算寬度
                         if p1 > 0:
                             width = max(2.0, 1 + p1 * 5)
                         else:
                             width = max(2.0, 1 + avg_pressure * 5)
                         
-                        # 設置畫筆
-                        pen = QPen(QColor(0, 0, 0))  # 黑色
+                        # 🆕 設置畫筆顏色
+                        pen = QPen(stroke_color)
                         pen.setWidthF(width)
                         pen.setCapStyle(Qt.RoundCap)
                         pen.setJoinStyle(Qt.RoundJoin)
@@ -572,13 +602,10 @@ class InkDrawingReconstructor:
             import traceback
             logger.error(traceback.format_exc())
             return False
-
-
-
     
     def process(self, csv_path: str, output_path: str = None) -> bool:
         """
-        完整處理流程（支援橡皮擦 + 清空畫布 + 從 metadata.json 讀取畫布尺寸）
+        完整處理流程（支援橡皮擦 + 清空畫布 + 顏色）
         
         Args:
             csv_path: CSV 檔案路徑
@@ -594,12 +621,12 @@ class InkDrawingReconstructor:
                 output_path = os.path.join(csv_dir, "reconstruct.png")
             
             logger.info("=" * 60)
-            logger.info("🎨 開始重建數位墨水繪圖（支援橡皮擦 + 清空畫布）")
+            logger.info("🎨 開始重建數位墨水繪圖（支援橡皮擦 + 清空畫布 + 顏色）")
             logger.info("=" * 60)
             logger.info(f"輸入: {csv_path}")
             logger.info(f"輸出: {output_path}")
             
-            # 🆕 1. 讀取 metadata（如果畫布尺寸未設置）
+            # 1. 讀取 metadata（如果畫布尺寸未設置）
             if self.canvas_width is None or self.canvas_height is None:
                 metadata = self.load_metadata(csv_dir)
                 
@@ -615,7 +642,7 @@ class InkDrawingReconstructor:
             # 3. 讀取標記數據（橡皮擦事件 + 清空畫布）
             markers_df = self.load_markers(csv_dir)
             
-            # 4. 解析筆劃
+            # 4. 解析筆劃（包含顏色）
             strokes = self.parse_strokes(df)
             
             if not strokes:
@@ -633,9 +660,8 @@ class InkDrawingReconstructor:
             
             if not final_strokes:
                 logger.warning("⚠️ 所有筆劃都被刪除了")
-                # 仍然生成空白圖片
             
-            # 8. 重建繪圖
+            # 8. 重建繪圖（使用顏色）
             success = self.reconstruct_drawing(final_strokes, output_path)
             
             if success:
@@ -650,7 +676,6 @@ class InkDrawingReconstructor:
             import traceback
             logger.error(traceback.format_exc())
             return False
-
 
 
 def select_csv_file() -> str:
@@ -684,7 +709,7 @@ def select_csv_file() -> str:
 def main():
     """主程式"""
     print("\n" + "=" * 60)
-    print("🎨 數位墨水繪圖重建工具（支援橡皮擦 + 清空畫布）")
+    print("🎨 數位墨水繪圖重建工具（支援橡皮擦 + 清空畫布 + 顏色）")
     print("=" * 60 + "\n")
     
     # 在最開始就創建 QApplication
@@ -701,7 +726,7 @@ def main():
     
     print(f"✅ 選擇的檔案: {csv_path}\n")
     
-    # 🔧 修改：不再使用 ProcessingConfig，直接創建重建器（畫布尺寸從 metadata.json 讀取）
+    # 創建重建器（畫布尺寸從 metadata.json 讀取）
     reconstructor = InkDrawingReconstructor()
     
     # 2. 處理

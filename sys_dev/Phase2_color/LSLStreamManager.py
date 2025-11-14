@@ -20,7 +20,7 @@ class LSLStreamConfig:
     # 墨水數據串流配置
     ink_stream_name: str = "DigitalInk"
     ink_stream_type: str = "Ink"
-    ink_channel_count: int = 8  # x, y, pressure, tilt_x, tilt_y, velocity, stroke_id, event_type
+    ink_channel_count: int = 9  # 🆕 改為 9：x, y, pressure, tilt_x, tilt_y, velocity, stroke_id, event_type, color_hash
     ink_sampling_rate: float = 200.0  # Hz（標稱採樣率）
     
     # 事件標記串流配置
@@ -64,6 +64,23 @@ class LSLStreamManager:
         self.is_streaming = False
         self.stream_start_time = None
         
+        # 🆕 顏色映射表（用於將顏色名稱轉換為數字）
+        self.color_map = {
+            'black': 0,
+            '#000000': 0,
+            'red': 1,
+            '#ff0000': 1,
+            'blue': 2,
+            '#0000ff': 2,
+            'green': 3,
+            '#008000': 3,
+            'orange': 4,
+            '#ffa500': 4,
+            'purple': 5,
+            '#800080': 5,
+        }
+        self.next_color_id = 6  # 用於動態分配新顏色的 ID
+        
         # 統計資訊
         self.stats = {
             'total_ink_samples': 0,
@@ -101,7 +118,7 @@ class LSLStreamManager:
             return False
     
     def _create_ink_stream(self) -> bool:
-        """建立墨水數據串流"""
+        """建立墨水數據串流（添加顏色通道）"""
         try:
             # 創建串流資訊
             info = StreamInfo(
@@ -116,10 +133,12 @@ class LSLStreamManager:
             # 添加設備 metadata
             channels = info.desc().append_child("channels")
             
+            # 🆕 添加 color_id 通道
             channel_names = [
                 "x", "y", "pressure", 
                 "tilt_x", "tilt_y", 
-                "velocity", "stroke_id", "event_type"
+                "velocity", "stroke_id", "event_type",
+                "color_id"  # 🆕 新增顏色通道
             ]
             
             channel_units = [
@@ -130,7 +149,8 @@ class LSLStreamManager:
                 "degrees",     # -90 to 90
                 "pixels/s",
                 "count",       # 筆劃 ID
-                "enum"         # 事件類型（0=normal, 1=start, 2=end）
+                "enum",        # 事件類型（0=normal, 1=start, 2=end）
+                "enum"         # 🆕 顏色 ID（0=black, 1=red, 2=blue, ...）
             ]
             
             for name, unit in zip(channel_names, channel_units):
@@ -138,6 +158,13 @@ class LSLStreamManager:
                 ch.append_child_value("label", name)
                 ch.append_child_value("unit", unit)
                 ch.append_child_value("type", "Ink")
+            
+            # 🆕 添加顏色映射表到 metadata
+            color_mapping = info.desc().append_child("color_mapping")
+            for color_name, color_id in self.color_map.items():
+                color_entry = color_mapping.append_child("color")
+                color_entry.append_child_value("name", color_name)
+                color_entry.append_child_value("id", str(color_id))
             
             # 添加設備資訊
             acquisition = info.desc().append_child("acquisition")
@@ -149,7 +176,7 @@ class LSLStreamManager:
             # 創建輸出串流
             self.ink_outlet = StreamOutlet(info, chunk_size=32, max_buffered=360)
             
-            self.logger.info(f"Ink stream created: {self.config.ink_stream_name}")
+            self.logger.info(f"Ink stream created: {self.config.ink_stream_name} (with color support)")
             return True
             
         except Exception as e:
@@ -184,6 +211,31 @@ class LSLStreamManager:
             self.logger.error(f"Failed to create marker stream: {e}")
             return False
     
+    def _get_color_id(self, color: str) -> int:
+        """
+        🆕 將顏色名稱或十六進制值轉換為數字 ID
+        
+        Args:
+            color: 顏色名稱（如 'black'）或十六進制值（如 '#000000'）
+        
+        Returns:
+            int: 顏色 ID
+        """
+        # 標準化顏色字符串
+        color_lower = color.lower().strip()
+        
+        # 如果已經在映射表中，直接返回
+        if color_lower in self.color_map:
+            return self.color_map[color_lower]
+        
+        # 如果是新顏色，分配新 ID
+        new_id = self.next_color_id
+        self.color_map[color_lower] = new_id
+        self.next_color_id += 1
+        
+        self.logger.info(f"🎨 新顏色已註冊: {color} -> ID {new_id}")
+        return new_id
+    
     def push_ink_sample(self, 
                         x: float, 
                         y: float, 
@@ -193,9 +245,10 @@ class LSLStreamManager:
                         velocity: float = 0.0,
                         stroke_id: int = 0,
                         event_type: int = 0,
+                        color: str = 'black',  # 🆕 添加顏色參數
                         timestamp: Optional[float] = None) -> bool:
         """
-        推送墨水數據樣本到 LSL 串流
+        推送墨水數據樣本到 LSL 串流（添加顏色支援）
         
         Args:
             x: X 座標
@@ -206,6 +259,7 @@ class LSLStreamManager:
             velocity: 移動速度 (pixels/s)
             stroke_id: 筆劃 ID
             event_type: 事件類型 (0=normal, 1=stroke_start, 2=stroke_end)
+            color: 🆕 顏色名稱或十六進制值（如 'black' 或 '#000000'）
             timestamp: 時間戳（如果為 None，使用當前時間）
         
         Returns:
@@ -223,7 +277,10 @@ class LSLStreamManager:
                 x_norm = x
                 y_norm = y
             
-            # 構建樣本數據
+            # 🆕 轉換顏色為 ID
+            color_id = self._get_color_id(color)
+            
+            # 構建樣本數據（添加顏色 ID）
             sample = [
                 float(x_norm),
                 float(y_norm),
@@ -232,7 +289,8 @@ class LSLStreamManager:
                 float(tilt_y),
                 float(velocity),
                 float(stroke_id),
-                float(event_type)
+                float(event_type),
+                float(color_id)  # 🆕 添加顏色 ID
             ]
             
             # 推送到 LSL
@@ -293,6 +351,15 @@ class LSLStreamManager:
         """
         return local_clock()
     
+    def get_color_mapping(self) -> Dict[str, int]:
+        """
+        🆕 獲取當前的顏色映射表
+        
+        Returns:
+            Dict[str, int]: 顏色名稱到 ID 的映射
+        """
+        return self.color_map.copy()
+    
     def get_stats(self) -> Dict[str, Any]:
         """
         獲取串流統計資訊
@@ -302,6 +369,9 @@ class LSLStreamManager:
         """
         if self.stream_start_time:
             self.stats['stream_duration'] = local_clock() - self.stream_start_time
+        
+        # 🆕 添加顏色統計
+        self.stats['total_colors_used'] = len(self.color_map)
         
         return self.stats.copy()
     
@@ -314,6 +384,9 @@ class LSLStreamManager:
             if self.marker_outlet:
                 self.push_marker("stream_end")
             
+            # 🆕 記錄顏色映射表
+            self.logger.info(f"Color mapping used in this session: {self.color_map}")
+            
             # 關閉串流
             self.ink_outlet = None
             self.marker_outlet = None
@@ -325,3 +398,73 @@ class LSLStreamManager:
             
         except Exception as e:
             self.logger.error(f"Error closing streams: {e}")
+
+
+# ============================================================================
+# 使用範例
+# ============================================================================
+
+def example_with_color_support():
+    """🆕 顏色支援使用範例"""
+    import logging
+    
+    logging.basicConfig(level=logging.INFO)
+    
+    # 配置串流（注意 channel_count 已改為 9）
+    config = LSLStreamConfig(
+        device_manufacturer="Wacom",
+        device_model="Wacom One 12",
+        ink_channel_count=9  # 🆕 包含顏色通道
+    )
+    
+    # 初始化管理器
+    manager = LSLStreamManager(config)
+    
+    # 初始化串流
+    if not manager.initialize_streams():
+        print("Failed to initialize streams")
+        return
+    
+    print("✅ Streams initialized with color support")
+    
+    # 推送不同顏色的墨水點
+    colors = ['black', 'red', 'blue', 'green']
+    
+    for i, color in enumerate(colors):
+        # 標記顏色切換
+        if i > 0:
+            manager.push_marker(f"color_switch|from:{colors[i-1]}|to:{color}")
+        
+        # 推送該顏色的筆劃
+        manager.push_marker(f"stroke_start_{i}")
+        
+        for j in range(10):
+            manager.push_ink_sample(
+                x=0.5 + j * 0.01,
+                y=0.5 + i * 0.1,
+                pressure=0.5,
+                stroke_id=i,
+                event_type=1 if j == 0 else (2 if j == 9 else 0),
+                color=color  # 🆕 指定顏色
+            )
+        
+        manager.push_marker(f"stroke_end_{i}")
+    
+    # 獲取顏色映射
+    color_mapping = manager.get_color_mapping()
+    print(f"\n🎨 Color mapping: {color_mapping}")
+    
+    # 獲取統計
+    stats = manager.get_stats()
+    print(f"\n📊 Stats: {stats}")
+    
+    # 關閉串流
+    manager.close_streams()
+    print("\n✅ Streams closed")
+
+
+if __name__ == "__main__":
+    print("=" * 70)
+    print("LSL Stream Manager - Color Support Example")
+    print("=" * 70)
+    example_with_color_support()
