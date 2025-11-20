@@ -645,23 +645,33 @@ class WacomDrawingCanvas(QWidget):
             import traceback
             self.logger.error(traceback.format_exc())
 
-    
     def _export_current_canvas(self):
-        """匯出當前畫布"""
+        """匯出當前畫布（保存到兩個位置）"""
         try:
             if hasattr(self, 'lsl') and self.lsl is not None:
-                output_dir = os.path.join(
+                # 🆕 方案 1：保存到 session_id 子目錄（原有路徑）
+                output_dir_with_session = os.path.join(
                     self.lsl.data_recorder.output_dir, 
                     self.lsl.data_recorder.session_id
                 )
-                os.makedirs(output_dir, exist_ok=True)
+                os.makedirs(output_dir_with_session, exist_ok=True)
                 
-                canvas_image_path = os.path.join(output_dir, "canvas_drawing.png")
+                canvas_image_path_1 = os.path.join(output_dir_with_session, "canvas_drawing.png")
                 
-                if self.export_canvas_image(canvas_image_path):
-                    self.logger.info(f"✅ 畫布已保存: {canvas_image_path}")
+                # 🆕 方案 2：保存到 output_dir 根目錄（新增路徑）
+                canvas_image_path_2 = os.path.join(self.lsl.data_recorder.output_dir, "canvas_drawing.png")
+                
+                # 保存到第一個位置
+                if self.export_canvas_image(canvas_image_path_1):
+                    self.logger.info(f"✅ 畫布已保存（位置 1）: {canvas_image_path_1}")
                 else:
-                    self.logger.warning("⚠️ 畫布匯出失敗")
+                    self.logger.warning("⚠️ 畫布匯出失敗（位置 1）")
+                
+                # 🆕 保存到第二個位置
+                if self.export_canvas_image(canvas_image_path_2):
+                    self.logger.info(f"✅ 畫布已保存（位置 2）: {canvas_image_path_2}")
+                else:
+                    self.logger.warning("⚠️ 畫布匯出失敗（位置 2）")
                     
         except Exception as e:
             self.logger.error(f"❌ 匯出畫布失敗: {e}")
