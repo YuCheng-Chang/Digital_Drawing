@@ -1,5 +1,5 @@
 # main.py
-from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QHBoxLayout, QVBoxLayout, QMessageBox, QDesktopWidget
+from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QHBoxLayout, QVBoxLayout, QMessageBox, QDesktopWidget, QLabel
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPainter, QPen, QColor, QTabletEvent
 import sys
@@ -19,6 +19,155 @@ logging.basicConfig(
   format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
+class ExperimenterControlWindow(QWidget):
+    """實驗者控制視窗（顯示在主螢幕）"""
+    
+    def __init__(self, canvas, primary_screen, is_extended_mode):
+        super().__init__()
+        self.canvas = canvas
+        self.primary_screen = primary_screen
+        self.is_extended_mode = is_extended_mode
+        self.logger = logging.getLogger('ExperimenterControlWindow')
+        
+        self._setup_ui()
+        self._setup_window_position()
+    
+    def _setup_ui(self):
+        """設置 UI"""
+        self.setWindowTitle("實驗者控制面板")
+        self.setFixedSize(400, 230)  # 🆕 增加高度以容納繪畫編號
+        
+        # 主佈局
+        main_layout = QVBoxLayout()
+        main_layout.setSpacing(15)
+        main_layout.setContentsMargins(20, 20, 20, 20)
+        
+        # === 資訊顯示區域 ===
+        info_layout = QVBoxLayout()
+        
+        # 受試者編號標籤
+        self.subject_label = QLabel("受試者編號: N/A")
+        self.subject_label.setStyleSheet("font-size: 14px; font-weight: bold;")
+        info_layout.addWidget(self.subject_label)
+        
+        # 🆕🆕🆕 當前繪畫編號標籤
+        self.drawing_number_label = QLabel("當前繪畫編號: N/A")
+        self.drawing_number_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #2196F3;")
+        info_layout.addWidget(self.drawing_number_label)
+        
+        # 當前繪畫類型標籤
+        self.drawing_type_label = QLabel("當前繪畫類型: N/A")
+        self.drawing_type_label.setStyleSheet("font-size: 14px; font-weight: bold;")
+        info_layout.addWidget(self.drawing_type_label)
+        
+        main_layout.addLayout(info_layout)
+        
+        # 分隔線
+        line = QWidget()
+        line.setFixedHeight(2)
+        line.setStyleSheet("background-color: #cccccc;")
+        main_layout.addWidget(line)
+        
+        # === 控制按鈕區域 ===
+        button_layout = QHBoxLayout()
+        button_layout.setSpacing(10)
+        
+        # 新繪畫按鈕
+        self.new_drawing_button = QPushButton("➕ 新繪畫")
+        self.new_drawing_button.setFixedHeight(50)
+        self.new_drawing_button.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50;
+                color: white;
+                font-size: 16px;
+                font-weight: bold;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+        """)
+        self.new_drawing_button.clicked.connect(self.on_new_drawing_clicked)
+        button_layout.addWidget(self.new_drawing_button)
+        
+        # 關閉程式按鈕
+        self.close_button = QPushButton("❌ 關閉程式")
+        self.close_button.setFixedHeight(50)
+        self.close_button.setStyleSheet("""
+            QPushButton {
+                background-color: #f44336;
+                color: white;
+                font-size: 16px;
+                font-weight: bold;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #da190b;
+            }
+        """)
+        self.close_button.clicked.connect(self.on_close_clicked)
+        button_layout.addWidget(self.close_button)
+        
+        main_layout.addLayout(button_layout)
+        
+        self.setLayout(main_layout)
+
+    
+    def _setup_window_position(self):
+        """設置視窗位置（主螢幕右上角）"""
+        if self.is_extended_mode:
+            # 延伸模式：放在主螢幕右上角
+            x = self.primary_screen.x() + self.primary_screen.width() - self.width() - 20
+            y = self.primary_screen.y() + 20
+            self.move(x, y)
+            self.logger.info(f"✅ 控制視窗已設置在主螢幕右上角: ({x}, {y})")
+        else:
+            # 單螢幕模式：放在螢幕右上角
+            x = self.primary_screen.width() - self.width() - 20
+            y = 20
+            self.move(x, y)
+            self.logger.info(f"✅ 控制視窗已設置在螢幕右上角: ({x}, {y})")
+        
+        # 設置視窗置頂
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+    
+    def update_info(self, subject_id, drawing_number, drawing_type):
+        """更新顯示的資訊"""
+        self.subject_label.setText(f"受試者編號: {subject_id}")
+        self.drawing_number_label.setText(f"當前繪畫編號: {drawing_number}")  # 🆕
+        self.drawing_type_label.setText(f"當前繪畫類型: {drawing_type}")
+        self.logger.info(f"📝 控制面板資訊已更新: {subject_id}, #{drawing_number}, {drawing_type}")
+
+    
+    def on_new_drawing_clicked(self):
+        """新繪畫按鈕點擊事件"""
+        self.logger.info("🎨 點擊新繪畫按鈕")
+        self.canvas.start_new_drawing()
+    
+    def on_close_clicked(self):
+        """關閉程式按鈕點擊事件"""
+        self.logger.info("❌ 點擊關閉程式按鈕")
+        
+        # 確認對話框
+        reply = QMessageBox.question(
+            self,
+            '確認關閉',
+            '確定要關閉程式嗎？\n所有數據將被保存。',
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        
+        if reply == QMessageBox.Yes:
+            self.logger.info("✅ 用戶確認關閉程式")
+            self.canvas.close()  # 關閉畫布視窗
+            self.close()  # 關閉控制視窗
+    
+    def closeEvent(self, event):
+        """控制視窗關閉時同時關閉畫布"""
+        self.logger.info("🔚 控制視窗關閉")
+        if self.canvas:
+            self.canvas.close()
+        event.accept()
 
 class WacomDrawingCanvas(QWidget):
     def __init__(self, ink_system, config: ProcessingConfig):
@@ -68,12 +217,17 @@ class WacomDrawingCanvas(QWidget):
         
         # 🆕 設置視窗屬性
         self._setup_window()
-        
+
         # 🆕 更新視窗標題
         self._update_window_title()
-        
+
         # 設置工具欄
         self._setup_toolbar()
+
+        # 🆕🆕🆕 創建實驗者控制視窗
+        self.control_window = None
+        self._create_control_window()
+
         
         # 初始化LSL
         self._initialize_lsl()
@@ -155,11 +309,12 @@ class WacomDrawingCanvas(QWidget):
         if self.is_extended_mode:
             # 🎯 延伸模式：副螢幕使用全螢幕（自動隱藏工作列）
             self.move(self.secondary_screen.x(), self.secondary_screen.y())
-            self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+            # 🆕🆕🆕 移除關閉按鈕，只保留無邊框和置頂
+            self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.CustomizeWindowHint)
             self.showFullScreen()
             
             self.logger.info("=" * 60)
-            self.logger.info("✅ 畫布視窗已設置在副螢幕（全螢幕模式）")
+            self.logger.info("✅ 畫布視窗已設置在副螢幕（全螢幕模式，無關閉按鈕）")
             self.logger.info(f"   位置: ({self.secondary_screen.x()}, {self.secondary_screen.y()})")
             self.logger.info(f"   尺寸: {self.secondary_screen.width()} x {self.secondary_screen.height()}")
             self.logger.info("   Windows 工作列已自動隱藏")
@@ -168,10 +323,11 @@ class WacomDrawingCanvas(QWidget):
             # 單螢幕模式：使用視窗模式（保留工作列）
             self.move(0, 0)
             self.setFixedSize(self.config.canvas_width, self.config.canvas_height + 50)
-            self.setWindowFlags(Qt.Window | Qt.WindowCloseButtonHint)
+            # 🆕🆕🆕 禁用關閉按鈕
+            self.setWindowFlags(Qt.Window | Qt.CustomizeWindowHint | Qt.WindowTitleHint | Qt.WindowMinimizeButtonHint)
             
             self.logger.info("=" * 60)
-            self.logger.info("✅ 畫布視窗已設置在主螢幕（視窗模式）")
+            self.logger.info("✅ 畫布視窗已設置在主螢幕（視窗模式，無關閉按鈕）")
             self.logger.info("   位置: (0, 0)")
             self.logger.info(f"   尺寸: {self.config.canvas_width} x {self.config.canvas_height + 50}")
             self.logger.info("   Windows 工作列保持可見")
@@ -179,6 +335,7 @@ class WacomDrawingCanvas(QWidget):
         
         # 設置滑鼠追蹤
         self.setMouseTracking(True)
+
         
     def get_subject_info(self):
         """獲取受試者資訊（根據模式決定對話框位置）"""
@@ -342,11 +499,19 @@ class WacomDrawingCanvas(QWidget):
             
             self.logger.info(f"✅ 新繪畫已開始 (繪畫編號: {self.drawing_counter})")
             
+            # 🆕🆕🆕 更新控制視窗資訊
+            if self.control_window:
+                subject_id = self.subject_info.get('subject_id', 'N/A')
+                drawing_number = self.drawing_counter  # 🆕 添加繪畫編號
+                drawing_type = self.current_drawing_info.get('drawing_type', 'N/A')
+                self.control_window.update_info(subject_id, drawing_number, drawing_type)  # 🆕 傳遞三個參數
+            
         except Exception as e:
             self.logger.error(f"❌ 開始新繪畫失敗: {e}")
             import traceback
             self.logger.error(traceback.format_exc())
             QMessageBox.critical(self, "錯誤", f"開始新繪畫失敗: {e}")
+
 
     
     def _setup_logging_to_file(self, session_id: str, output_dir: str):
@@ -450,18 +615,13 @@ class WacomDrawingCanvas(QWidget):
         # 橡皮擦按鈕
         self.eraser_button = QPushButton("🧈")
         self.eraser_button.setFixedSize(60, 40)
-        # self.eraser_button.setStyleSheet("font-size: 20px;")
         self.eraser_button.setToolTip("橡皮擦")
         self.eraser_button.clicked.connect(lambda: self.switch_tool(ToolType.ERASER))
         toolbar_layout.addWidget(self.eraser_button)
         
-        # 新繪畫按鈕
-        self.new_drawing_button = QPushButton("➕")
-        self.new_drawing_button.setFixedSize(60, 40)
-        # self.new_drawing_button.setStyleSheet("background-color: lightgreen; font-size: 20px;")
-        self.new_drawing_button.setToolTip("新繪畫")
-        self.new_drawing_button.clicked.connect(self.start_new_drawing)
-        toolbar_layout.addWidget(self.new_drawing_button)
+        # 🆕🆕🆕 移除新繪畫按鈕（已移到控制視窗）
+        # self.new_drawing_button = QPushButton("➕")
+        # ...（刪除這段代碼）
         
         # 添加彈性空間
         toolbar_layout.addStretch()
@@ -479,7 +639,32 @@ class WacomDrawingCanvas(QWidget):
         main_layout.setSpacing(0)
         
         self.setLayout(main_layout)
-      
+
+    def _create_control_window(self):
+        """🆕 創建實驗者控制視窗"""
+        try:
+            self.control_window = ExperimenterControlWindow(
+                canvas=self,
+                primary_screen=self.primary_screen,
+                is_extended_mode=self.is_extended_mode
+            )
+            
+            # 更新控制視窗的資訊
+            subject_id = self.subject_info.get('subject_id', 'N/A') if self.subject_info else 'N/A'
+            drawing_number = self.drawing_counter  # 🆕 添加繪畫編號
+            drawing_type = self.current_drawing_info.get('drawing_type', 'N/A') if self.current_drawing_info else 'N/A'
+            self.control_window.update_info(subject_id, drawing_number, drawing_type)  # 🆕 傳遞三個參數
+            
+            # 顯示控制視窗
+            self.control_window.show()
+            
+            self.logger.info("✅ 實驗者控制視窗已創建並顯示")
+            
+        except Exception as e:
+            self.logger.error(f"❌ 創建控制視窗失敗: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
+
     def _finish_current_drawing(self):
         """完成當前繪畫的保存工作"""
         try:
@@ -1006,6 +1191,10 @@ class WacomDrawingCanvas(QWidget):
             self.logger.info("=" * 60)
             self.logger.info("🔚 程序關閉")
             self.logger.info("=" * 60)
+            
+            # 🆕🆕🆕 關閉控制視窗
+            if self.control_window:
+                self.control_window.close()
             
             # 完成最後一次繪畫
             self._finish_current_drawing()
