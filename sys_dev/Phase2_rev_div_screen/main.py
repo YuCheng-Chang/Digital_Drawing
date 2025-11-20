@@ -131,12 +131,12 @@ class WacomDrawingCanvas(QWidget):
         toolbar_height = 50
         
         if self.is_extended_mode:
-            # 延伸模式：使用副螢幕尺寸
+            # 延伸模式：使用副螢幕完整尺寸（全螢幕，不保留工作列空間）
             canvas_width = self.secondary_screen.width()
-            canvas_height = self.secondary_screen.height() - toolbar_height
-            self.logger.info(f"📐 畫布尺寸（延伸模式 - 副螢幕）: {canvas_width} x {canvas_height}")
+            canvas_height = self.secondary_screen.height() - toolbar_height  # 減去工具列高度
+            self.logger.info(f"📐 畫布尺寸（延伸模式 - 副螢幕全螢幕）: {canvas_width} x {canvas_height}")
         else:
-            # 單螢幕模式：使用主螢幕可用區域
+            # 單螢幕模式：使用主螢幕可用區域（保留工作列空間）
             desktop = QDesktopWidget()
             screen_rect = desktop.availableGeometry()
             canvas_width = screen_rect.width()
@@ -146,30 +146,40 @@ class WacomDrawingCanvas(QWidget):
         # 更新配置
         self.config.canvas_width = canvas_width
         self.config.canvas_height = canvas_height
-    
+        
     def _setup_window(self):
-        """🆕 根據螢幕模式設置視窗屬性"""
+        """🆕 根據螢幕模式設置視窗屬性（延伸模式時副螢幕全螢幕）"""
         # 設置視窗標題
         self.setWindowTitle("Wacom 繪圖測試")
         
-        # 🔧 禁止調整視窗大小
-        self.setFixedSize(self.config.canvas_width, self.config.canvas_height + 50)
-        
         if self.is_extended_mode:
-            # 延伸模式：移動視窗到副螢幕左上角
+            # 🎯 延伸模式：副螢幕使用全螢幕（自動隱藏工作列）
             self.move(self.secondary_screen.x(), self.secondary_screen.y())
-            self.logger.info(f"✅ 畫布視窗已設置在副螢幕: 位置=({self.secondary_screen.x()}, {self.secondary_screen.y()})")
+            self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+            self.showFullScreen()
+            
+            self.logger.info("=" * 60)
+            self.logger.info("✅ 畫布視窗已設置在副螢幕（全螢幕模式）")
+            self.logger.info(f"   位置: ({self.secondary_screen.x()}, {self.secondary_screen.y()})")
+            self.logger.info(f"   尺寸: {self.secondary_screen.width()} x {self.secondary_screen.height()}")
+            self.logger.info("   Windows 工作列已自動隱藏")
+            self.logger.info("=" * 60)
         else:
-            # 單螢幕模式：移動視窗到主螢幕左上角
+            # 單螢幕模式：使用視窗模式（保留工作列）
             self.move(0, 0)
-            self.logger.info("✅ 畫布視窗已設置在主螢幕: 位置=(0, 0)")
-        
-        # 🔧 設置視窗標誌
-        self.setWindowFlags(Qt.Window | Qt.WindowCloseButtonHint)
+            self.setFixedSize(self.config.canvas_width, self.config.canvas_height + 50)
+            self.setWindowFlags(Qt.Window | Qt.WindowCloseButtonHint)
+            
+            self.logger.info("=" * 60)
+            self.logger.info("✅ 畫布視窗已設置在主螢幕（視窗模式）")
+            self.logger.info("   位置: (0, 0)")
+            self.logger.info(f"   尺寸: {self.config.canvas_width} x {self.config.canvas_height + 50}")
+            self.logger.info("   Windows 工作列保持可見")
+            self.logger.info("=" * 60)
         
         # 設置滑鼠追蹤
         self.setMouseTracking(True)
-    
+        
     def get_subject_info(self):
         """獲取受試者資訊（根據模式決定對話框位置）"""
         dialog = SubjectInfoDialog(self)

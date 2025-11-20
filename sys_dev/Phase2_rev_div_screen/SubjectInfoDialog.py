@@ -108,7 +108,7 @@ class DrawingTypeDialog(QDialog):
         self.drawing_type_combo = QComboBox()
         self.drawing_type_combo.addItems([
             "pretest (練習測試)",  # 🆕 新增選項
-            "DAP (Draw-  a-Person Test)",
+            "DAP (Draw-a-Person Test)",
             "HTP (House-Tree-Person Test)", 
             "FD (Free-Drawing Test)"
         ])
