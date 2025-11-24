@@ -550,9 +550,8 @@ class WacomDrawingCanvas(QWidget):
     
 
     def _on_stroke_completed_callback(self, stroke_data):
-        """筆劃完成時的處理"""
+        """筆劃完成時的處理（優化版：添加邊界框緩存）"""
         try:
-            # ✅✅✅ 使用 LSL 的 stroke_id（這是唯一的真相來源）
             stroke_id = stroke_data['stroke_id']
             stroke_points = stroke_data['points']
             
@@ -570,7 +569,7 @@ class WacomDrawingCanvas(QWidget):
                 for p in stroke_points
             ]
             
-            # 創建元數據（使用 LSL 的 stroke_id）
+            # 創建元數據
             metadata = StrokeMetadata(
                 stroke_id=stroke_id,
                 tool_type=ToolType.PEN,
@@ -581,24 +580,31 @@ class WacomDrawingCanvas(QWidget):
                 deleted_at=None
             )
             
-            # ✅✅✅ 添加到 all_strokes（使用 LSL 的 stroke_id）
+            # 🆕🆕🆕 計算邊界框緩存
+            xs = [p[0] for p in pixel_points]
+            ys = [p[1] for p in pixel_points]
+            bbox_cache = (min(xs), max(xs), min(ys), max(ys))
+            
+            # 添加到 all_strokes
             self.all_strokes.append({
                 'stroke_id': stroke_id,
                 'tool_type': ToolType.PEN,
                 'points': pixel_points,
                 'metadata': metadata,
-                'is_deleted': False
+                'is_deleted': False,
+                '_bbox_cache': bbox_cache  # 🆕 添加邊界框緩存
             })
             
-            self.logger.info(f"📝 筆劃已保存: stroke_id={stroke_id}, points={len(pixel_points)}")
+            self.logger.info(f"📝 筆劃已保存: stroke_id={stroke_id}, points={len(pixel_points)}, bbox={bbox_cache}")
             
-            # ✅✅✅ 立即重繪畫布
+            # 立即重繪畫布
             self.update()
             
         except Exception as e:
             self.logger.error(f"❌ 處理筆劃完成回調時出錯: {e}")
             import traceback
             self.logger.error(traceback.format_exc())
+
 
     def _setup_toolbar(self):
         """設置工具欄（修改版：只顯示圖示，懸停顯示提示）"""
@@ -996,43 +1002,77 @@ class WacomDrawingCanvas(QWidget):
 
     
     def _handle_eraser_input(self, x_pixel, y_pixel, current_pressure, event):
-        """處理橡皮擦輸入"""
+        """處理橡皮擦輸入（優化版：邊界框過濾 + 降低重繪頻率）"""
         try:
             if current_pressure > 0:
                 self.current_eraser_points.append((x_pixel, y_pixel))
                 
-                # 🆕🆕🆕 初始化被刪除的筆劃 ID 集合
                 if not hasattr(self, 'current_deleted_stroke_ids'):
                     self.current_deleted_stroke_ids = set()
                 
-                # 即時檢測碰撞並標記刪除
+                # 🆕🆕🆕 優化 1：邊界框快速過濾
                 eraser_point = (x_pixel, y_pixel)
+                eraser_radius = self.eraser_tool.radius
+                
+                # 計算橡皮擦的邊界框
+                eraser_min_x = x_pixel - eraser_radius
+                eraser_max_x = x_pixel + eraser_radius
+                eraser_min_y = y_pixel - eraser_radius
+                eraser_max_y = y_pixel + eraser_radius
+                
                 for stroke in self.all_strokes:
                     if stroke['is_deleted']:
                         continue
                     
-                    if self.eraser_tool.check_collision(eraser_point, stroke['points']):
+                    points = stroke['points']
+                    if not points:
+                        continue
+                    
+                    # 🆕 快速邊界框檢查（只計算一次）
+                    if not hasattr(stroke, '_bbox_cache'):
+                        xs = [p[0] for p in points]
+                        ys = [p[1] for p in points]
+                        stroke['_bbox_cache'] = (min(xs), max(xs), min(ys), max(ys))
+                    
+                    min_x, max_x, min_y, max_y = stroke['_bbox_cache']
+                    
+                    # 檢查橡皮擦邊界框是否與筆劃邊界框重疊
+                    if (eraser_max_x < min_x or eraser_min_x > max_x or
+                        eraser_max_y < min_y or eraser_min_y > max_y):
+                        continue  # 跳過不可能碰撞的筆劃
+                    
+                    # 🆕 只對可能碰撞的筆劃進行精確檢測
+                    if self.eraser_tool.check_collision(eraser_point, points):
                         stroke['is_deleted'] = True
                         stroke['metadata'].is_deleted = True
                         
-                        # ✅✅✅ 使用 stroke 字典中的 stroke_id（這是 LSL 的 ID）
                         deleted_stroke_id = stroke['stroke_id']
                         self.current_deleted_stroke_ids.add(deleted_stroke_id)
+                        
+                        # 🆕 刪除邊界框緩存
+                        if '_bbox_cache' in stroke:
+                            del stroke['_bbox_cache']
                         
                         self.logger.info(f"🗑️ 刪除筆劃: stroke_id={deleted_stroke_id}")
                 
                 if not self.pen_is_touching:
                     self.logger.info("🧹 橡皮擦筆劃開始")
                     self.pen_is_touching = True
+                
+                # 🆕🆕🆕 優化 2：降低重繪頻率（每 2 個事件重繪一次）
+                if not hasattr(self, '_eraser_update_counter'):
+                    self._eraser_update_counter = 0
+                
+                self._eraser_update_counter += 1
+                if self._eraser_update_counter % 2 == 0:
+                    self.update()
             
             else:  # pressure = 0
                 if self.pen_is_touching and self.current_eraser_points:
                     self.logger.info("🧹 橡皮擦筆劃結束")
                     
-                    # 🆕🆕🆕 獲取被刪除的筆劃 ID
                     deleted_stroke_ids = list(getattr(self, 'current_deleted_stroke_ids', set()))
                     
-                    # 🆕🆕🆕 記錄到 LSL
                     if deleted_stroke_ids:
                         timestamp = self.lsl.stream_manager.get_stream_time()
                         eraser_id = len(self.eraser_tool.eraser_history)
@@ -1050,27 +1090,24 @@ class WacomDrawingCanvas(QWidget):
                     else:
                         self.logger.info("⏭️ 沒有刪除任何筆劃，跳過 LSL 記錄")
                     
-                    # 清空記錄
                     self.current_eraser_points = []
                     if hasattr(self, 'current_deleted_stroke_ids'):
                         self.current_deleted_stroke_ids = set()
                     self.pen_is_touching = False
                     self.current_pressure = 0.0
-                    
-                    # 🆕🆕🆕 關鍵修復：清空 last_point_data
                     self.last_point_data = None
                     
-                    # 🆕🆕🆕 清理 PointProcessor 歷史
                     if hasattr(self.ink_system, 'point_processor'):
                         self.ink_system.point_processor.clear_history()
                     
-                    # ✅ 重繪畫布
+                    # ✅ 橡皮擦結束時強制重繪
                     self.update()
             
         except Exception as e:
             self.logger.error(f"❌ 處理橡皮擦輸入失敗: {e}")
             import traceback
             self.logger.error(traceback.format_exc())
+
 
 
     def clear_canvas(self):
@@ -1360,7 +1397,10 @@ class WacomDrawingCanvas(QWidget):
             elif self.current_tool == ToolType.ERASER:
                 self._handle_eraser_input(x_pixel, adjusted_y, current_pressure, event)
             
-            self.update()
+            # 🆕🆕🆕 橡皮擦模式下不在這裡觸發 update()（由 _handle_eraser_input 控制）
+            if self.current_tool != ToolType.ERASER:
+                self.update()
+            
             event.accept()
             
         except Exception as e:
@@ -1370,21 +1410,38 @@ class WacomDrawingCanvas(QWidget):
             event.accept()
 
     def paintEvent(self, event):
-        """繪製筆劃"""
+        """繪製筆劃（優化版：雙緩衝 + 分離橡皮擦）"""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         
         toolbar_height = 50
         painter.translate(0, toolbar_height)
         
+        # 🆕🆕🆕 優化 1：只繪製可見區域的筆劃
+        visible_rect = event.rect()
+        visible_rect.translate(0, -toolbar_height)  # 調整工具欄偏移
+        
         pen = QPen(QColor(0, 0, 0), 2)
         painter.setPen(pen)
         
-        for stroke in self.all_strokes:
-            if stroke.get('is_deleted', False):
+        # 🆕🆕🆕 優化 2：預先過濾未刪除的筆劃
+        active_strokes = [s for s in self.all_strokes if not s.get('is_deleted', False)]
+        
+        # 繪製已完成的筆劃
+        for stroke in active_strokes:
+            points = stroke['points']
+            
+            if not points:
                 continue
             
-            points = stroke['points']
+            # 🆕 邊界框裁剪（跳過不可見的筆劃）
+            if hasattr(stroke, '_bbox_cache'):
+                min_x, max_x, min_y, max_y = stroke['_bbox_cache']
+                if (max_x < visible_rect.left() or min_x > visible_rect.right() or
+                    max_y < visible_rect.top() or min_y > visible_rect.bottom()):
+                    continue
+            
+            # 繪製筆劃
             for i in range(len(points) - 1):
                 x1, y1, p1 = points[i]
                 x2, y2, p2 = points[i + 1]
@@ -1392,11 +1449,9 @@ class WacomDrawingCanvas(QWidget):
                 width = 1 + p1 * 5
                 pen.setWidthF(width)
                 painter.setPen(pen)
-                painter.drawLine(
-                    int(x1), int(y1),
-                    int(x2), int(y2)
-                )
+                painter.drawLine(int(x1), int(y1), int(x2), int(y2))
         
+        # 繪製當前筆劃（筆模式）
         if self.current_tool == ToolType.PEN and self.current_stroke_points:
             pen = QPen(QColor(0, 100, 255), 2)
             painter.setPen(pen)
@@ -1409,12 +1464,16 @@ class WacomDrawingCanvas(QWidget):
                 painter.setPen(pen)
                 painter.drawLine(int(x1), int(y1), int(x2), int(y2))
         
+        # 🆕🆕🆕 優化 3：橡皮擦紅點使用簡化繪製（只繪製最後 5 個點）
         if self.current_tool == ToolType.ERASER and self.current_eraser_points:
-            pen = QPen(QColor(255, 0, 0, 100), 2)
+            pen = QPen(QColor(255, 0, 0, 150), 2)
             painter.setPen(pen)
-            painter.setBrush(QColor(255, 0, 0, 50))
+            painter.setBrush(QColor(255, 0, 0, 80))
             
-            for x, y in self.current_eraser_points:
+            # 只繪製最後 5 個點（減少繪製量）
+            recent_points = self.current_eraser_points[-5:]
+            
+            for x, y in recent_points:
                 painter.drawEllipse(
                     int(x - self.eraser_tool.radius),
                     int(y - self.eraser_tool.radius),
@@ -1422,7 +1481,7 @@ class WacomDrawingCanvas(QWidget):
                     int(self.eraser_tool.radius * 2)
                 )
         
-        # 🔧 修改狀態列顯示，添加繪畫類型
+        # 狀態列顯示
         painter.setPen(QPen(QColor(100, 100, 100)))
         
         drawing_type = self.current_drawing_info.get('drawing_type', 'N/A') if self.current_drawing_info else 'N/A'
@@ -1431,23 +1490,22 @@ class WacomDrawingCanvas(QWidget):
             x_pixel = self.last_point_data['x'] * self.width()
             y_pixel = self.last_point_data['y'] * self.height()
             stats_text = (
-                f"類型: {drawing_type} | "  # 🆕 添加繪畫類型
+                f"類型: {drawing_type} | "
                 f"工具: {self.current_tool.value} | "
-                f"筆劃數: {len([s for s in self.all_strokes if not s['is_deleted']])} | "
+                f"筆劃數: {len(active_strokes)} | "
                 f"總點數: {self.total_points} | "
                 f"壓力: {self.current_pressure:.3f} | "
                 f"位置: ({x_pixel:.0f}, {y_pixel:.0f})"
             )
         else:
             stats_text = (
-                f"類型: {drawing_type} | "  # 🆕 添加繪畫類型
+                f"類型: {drawing_type} | "
                 f"工具: {self.current_tool.value} | "
-                f"筆劃數: {len([s for s in self.all_strokes if not s['is_deleted']])} | "
+                f"筆劃數: {len(active_strokes)} | "
                 f"總點數: {self.total_points} | "
                 f"壓力: {self.current_pressure:.3f} | 位置: N/A"
             )
-        
-        # painter.drawText(10, 20, stats_text)
+
         
     def update_stats_display(self):
         """更新統計顯示"""
