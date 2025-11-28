@@ -62,7 +62,7 @@ class BoundingBoxWidget(QWidget):
         logger.info(f"✅ 初始化邊界框: {self.bbox}")
     
     def _calculate_default_bbox(self):
-        """計算預設邊界框（基於所有未刪除的筆劃）"""
+        """計算預設邊界框（基於所有未刪除的筆劃，不添加邊距）"""
         if not self.strokes:
             # 沒有筆劃，返回畫布中心的小框
             center_x = self.canvas_width / 2
@@ -87,23 +87,20 @@ class BoundingBoxWidget(QWidget):
             # 沒有有效點，返回預設框
             return QRect(100, 100, 200, 200)
         
-        # 計算邊界
+        # 計算邊界（不添加邊距）
         min_x = min(all_x)
         max_x = max(all_x)
         min_y = min(all_y)
         max_y = max(all_y)
         
-        # 添加 5% 的邊距
         width = max_x - min_x
         height = max_y - min_y
-        padding_x = width * 0.05
-        padding_y = height * 0.05
         
         bbox = QRect(
-            int(min_x - padding_x),
-            int(min_y - padding_y),
-            int(width + 2 * padding_x),
-            int(height + 2 * padding_y)
+            int(min_x),
+            int(min_y),
+            int(width),
+            int(height)
         )
         
         logger.info(f"📐 計算預設邊界框: x=[{min_x:.1f}, {max_x:.1f}], y=[{min_y:.1f}, {max_y:.1f}]")
@@ -386,11 +383,6 @@ class AnnotationWindow(QMainWindow):
         
         # 設置 UI
         self._setup_ui()
-        
-        # 自動載入（如果有預設路徑）
-        default_path = r"C:\Users\bml\OneDrive\Desktop\wacom_recordings"
-        if os.path.exists(default_path):
-            self.load_data(default_path)
     
     def _setup_ui(self):
         """設置 UI"""
@@ -462,8 +454,9 @@ class AnnotationWindow(QMainWindow):
             # 檢查必要檔案
             ink_data_path = os.path.join(folder_path, "ink_data.csv")
             
+            # 🆕 移除警告，直接返回
             if not os.path.exists(ink_data_path):
-                QMessageBox.warning(self, "錯誤", f"找不到 ink_data.csv\n路徑: {ink_data_path}")
+                logger.warning(f"⚠️ 找不到 ink_data.csv: {ink_data_path}")
                 return
             
             self.csv_dir = folder_path
@@ -656,9 +649,19 @@ class AnnotationWindow(QMainWindow):
             # 獲取邊界框資訊
             bbox_info = self.bbox_widget.get_bbox_info()
             
-            # 生成輸出路徑
-            output_png = os.path.join(self.csv_dir, "annotated_drawing.png")
-            output_excel = os.path.join(self.csv_dir, "annotation_data.xlsx")
+            # 🆕🆕🆕 生成輸出路徑（csv_dir 上一層的 feature_quantization 目錄）
+            parent_dir = os.path.dirname(self.csv_dir)
+            output_dir = os.path.join(parent_dir, "feature_quantization")
+            
+            # 🆕 如果目錄不存在則創建
+            os.makedirs(output_dir, exist_ok=True)
+            logger.info(f"📁 輸出目錄: {output_dir}")
+            
+            # 🆕 使用當前資料夾名稱作為檔案前綴
+            folder_name = os.path.basename(self.csv_dir)
+            
+            output_png = os.path.join(output_dir, f"{folder_name}_annotated.png")
+            output_excel = os.path.join(output_dir, f"{folder_name}_annotation.xlsx")
             
             # 1. 匯出 PNG（帶標註框）
             self._export_annotated_image(output_png, bbox_info)
