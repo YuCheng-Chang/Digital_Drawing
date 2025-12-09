@@ -1,10 +1,10 @@
 # annotate_drawing.py
 """
-Draw-a-Person 測驗標註工具
-- 讀取 ink_data.csv 和 markers.csv
+Draw-a-Person 測驗標註工具（批次處理版）
+- 支援多受試者批次處理
 - 自動計算預設邊界框（基於未刪除的筆劃）
 - 提供互動式調整功能
-- 匯出標註結果（PNG + Excel）
+- 匯出標註結果（PNG + Excel + 統計圖表）
 """
 
 import pandas as pd
@@ -13,13 +13,18 @@ import sys
 import os
 import json
 import logging
+import re
 from pathlib import Path
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QPushButton, QLabel, QFileDialog, QMessageBox, QGroupBox
+    QPushButton, QLabel, QFileDialog, QMessageBox, QGroupBox,
+    QListWidget, QDialog, QDialogButtonBox, QCheckBox, QScrollArea
 )
 from PyQt5.QtGui import QPainter, QPen, QColor, QPixmap, QImage, QBrush, QCursor
 from PyQt5.QtCore import Qt, QRect, QPoint
+import matplotlib
+matplotlib.use('Agg')  # 使用非互動式後端
+import matplotlib.pyplot as plt
 
 # 設置日誌
 logging.basicConfig(
@@ -29,6 +34,94 @@ logging.basicConfig(
 logger = logging.getLogger('DrawingAnnotator')
 
 
+class DrawingSelectionDialog(QDialog):
+    """繪畫選擇對話框"""
+    
+    def __init__(self, subject_drawings, parent=None):
+        """
+        Args:
+            subject_drawings: {subject_id: [drawing_folder_paths]}
+        """
+        super().__init__(parent)
+        self.subject_drawings = subject_drawings
+        self.selected_drawings = {}  # {subject_id: [selected_paths]}
+        
+        self.setWindowTitle("選擇要分析的繪畫")
+        self.setMinimumSize(600, 400)
+        
+        self._setup_ui()
+    
+    def _setup_ui(self):
+        """設置 UI"""
+        layout = QVBoxLayout()
+        
+        # 說明標籤
+        info_label = QLabel("請勾選要分析的繪畫資料夾：")
+        layout.addWidget(info_label)
+        
+        # 捲動區域
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll_widget = QWidget()
+        scroll_layout = QVBoxLayout()
+        
+        self.checkboxes = {}  # {subject_id: {drawing_path: checkbox}}
+        
+        for subject_id in sorted(self.subject_drawings.keys()):
+            drawings = self.subject_drawings[subject_id]
+            
+            # 受試者標題
+            subject_label = QLabel(f"\n📁 {subject_id} ({len(drawings)} 個繪畫)")
+            subject_label.setStyleSheet("font-weight: bold; font-size: 14px;")
+            scroll_layout.addWidget(subject_label)
+            
+            self.checkboxes[subject_id] = {}
+            
+            for drawing_path in sorted(drawings):
+                folder_name = os.path.basename(drawing_path)
+                checkbox = QCheckBox(f"  ✓ {folder_name}")
+                checkbox.setChecked(True)  # 預設全選
+                
+                self.checkboxes[subject_id][drawing_path] = checkbox
+                scroll_layout.addWidget(checkbox)
+        
+        scroll_layout.addStretch()
+        scroll_widget.setLayout(scroll_layout)
+        scroll.setWidget(scroll_widget)
+        
+        layout.addWidget(scroll)
+        
+        # 按鈕
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.Ok | QDialogButtonBox.Cancel
+        )
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        
+        layout.addWidget(button_box)
+        
+        self.setLayout(layout)
+    
+    def accept(self):
+        """確認選擇"""
+        self.selected_drawings = {}
+        
+        for subject_id, drawings_dict in self.checkboxes.items():
+            selected = []
+            for drawing_path, checkbox in drawings_dict.items():
+                if checkbox.isChecked():
+                    selected.append(drawing_path)
+            
+            if selected:
+                self.selected_drawings[subject_id] = selected
+        
+        if not self.selected_drawings:
+            QMessageBox.warning(self, "警告", "請至少選擇一個繪畫資料夾")
+            return
+        
+        super().accept()
+
+
 class BoundingBoxWidget(QWidget):
     """可拖動調整的邊界框繪製區域"""
     
@@ -36,35 +129,27 @@ class BoundingBoxWidget(QWidget):
         super().__init__(parent)
         self.canvas_width = canvas_width
         self.canvas_height = canvas_height
-        self.strokes = strokes  # {stroke_id: [(x, y, pressure), ...]}
+        self.strokes = strokes
         
-        # 計算預設邊界框
         self.bbox = self._calculate_default_bbox()
         
-        # 拖動狀態
         self.dragging = False
-        self.drag_handle = None  # 'tl', 'tr', 'bl', 'br', 'top', 'bottom', 'left', 'right', 'move'
+        self.drag_handle = None
         self.drag_start_pos = None
         self.drag_start_bbox = None
         
-        # 手柄大小
         self.handle_size = 10
         
-        # 設置最小尺寸
         self.setMinimumSize(800, 600)
-        
-        # 啟用滑鼠追蹤
         self.setMouseTracking(True)
         
-        # 生成繪圖背景
         self._generate_drawing_background()
         
         logger.info(f"✅ 初始化邊界框: {self.bbox}")
     
     def _calculate_default_bbox(self):
-        """計算預設邊界框（基於所有未刪除的筆劃，不添加邊距）"""
+        """計算預設邊界框（不添加邊距）"""
         if not self.strokes:
-            # 沒有筆劃，返回畫布中心的小框
             center_x = self.canvas_width / 2
             center_y = self.canvas_height / 2
             size = 100
@@ -74,7 +159,6 @@ class BoundingBoxWidget(QWidget):
                 size, size
             )
         
-        # 收集所有點的座標
         all_x = []
         all_y = []
         
@@ -84,10 +168,8 @@ class BoundingBoxWidget(QWidget):
                 all_y.append(y)
         
         if not all_x:
-            # 沒有有效點，返回預設框
             return QRect(100, 100, 200, 200)
         
-        # 計算邊界（不添加邊距）
         min_x = min(all_x)
         max_x = max(all_x)
         min_y = min(all_y)
@@ -104,37 +186,32 @@ class BoundingBoxWidget(QWidget):
         )
         
         logger.info(f"📐 計算預設邊界框: x=[{min_x:.1f}, {max_x:.1f}], y=[{min_y:.1f}, {max_y:.1f}]")
-        logger.info(f"   邊界框: {bbox}")
         
         return bbox
     
     def _generate_drawing_background(self):
-        """生成繪圖背景（只生成一次）"""
+        """生成繪圖背景"""
         self.background_pixmap = QPixmap(self.canvas_width, self.canvas_height)
         self.background_pixmap.fill(Qt.white)
         
         painter = QPainter(self.background_pixmap)
         painter.setRenderHint(QPainter.Antialiasing)
         
-        # 繪製所有筆劃
         for stroke_id in sorted(self.strokes.keys()):
             stroke = self.strokes[stroke_id]
             
             if len(stroke) == 0:
                 continue
             
-            # 計算平均壓力
             pressures = [p for _, _, p in stroke if p > 0]
             avg_pressure = sum(pressures) / len(pressures) if pressures else 0.5
             
-            # 計算筆劃移動距離
             all_x = [x for x, _, _ in stroke]
             all_y = [y for _, y, _ in stroke]
             x_range = max(all_x) - min(all_x)
             y_range = max(all_y) - min(all_y)
             max_distance = max(x_range, y_range)
             
-            # 極短筆畫（視為點）
             if max_distance < 3.0:
                 center_x = sum(all_x) / len(all_x)
                 center_y = sum(all_y) / len(all_y)
@@ -146,7 +223,6 @@ class BoundingBoxWidget(QWidget):
                 painter.setPen(pen)
                 painter.drawPoint(int(center_x), int(center_y))
             else:
-                # 正常筆畫
                 for i in range(len(stroke) - 1):
                     x1, y1, p1 = stroke[i]
                     x2, y2, p2 = stroke[i + 1]
@@ -169,30 +245,24 @@ class BoundingBoxWidget(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         
-        # 計算縮放比例（適應視窗大小）
         scale_x = self.width() / self.canvas_width
         scale_y = self.height() / self.canvas_height
         scale = min(scale_x, scale_y)
         
-        # 計算偏移（居中）
         offset_x = (self.width() - self.canvas_width * scale) / 2
         offset_y = (self.height() - self.canvas_height * scale) / 2
         
-        # 保存變換
         painter.save()
         painter.translate(offset_x, offset_y)
         painter.scale(scale, scale)
         
-        # 繪製背景圖
         painter.drawPixmap(0, 0, self.background_pixmap)
         
-        # 繪製邊界框
         pen = QPen(QColor(255, 0, 0), 2)
         painter.setPen(pen)
         painter.setBrush(QBrush(QColor(255, 0, 0, 30)))
         painter.drawRect(self.bbox)
         
-        # 繪製手柄
         self._draw_handles(painter)
         
         painter.restore()
@@ -203,7 +273,6 @@ class BoundingBoxWidget(QWidget):
         painter.setBrush(QBrush(handle_color))
         painter.setPen(QPen(Qt.white, 1))
         
-        # 四個角
         handles = [
             self.bbox.topLeft(),
             self.bbox.topRight(),
@@ -214,12 +283,11 @@ class BoundingBoxWidget(QWidget):
         for point in handles:
             painter.drawEllipse(point, self.handle_size, self.handle_size)
         
-        # 四條邊的中點
         mid_handles = [
-            QPoint(self.bbox.center().x(), self.bbox.top()),      # 上
-            QPoint(self.bbox.center().x(), self.bbox.bottom()),   # 下
-            QPoint(self.bbox.left(), self.bbox.center().y()),     # 左
-            QPoint(self.bbox.right(), self.bbox.center().y())     # 右
+            QPoint(self.bbox.center().x(), self.bbox.top()),
+            QPoint(self.bbox.center().x(), self.bbox.bottom()),
+            QPoint(self.bbox.left(), self.bbox.center().y()),
+            QPoint(self.bbox.right(), self.bbox.center().y())
         ]
         
         for point in mid_handles:
@@ -232,12 +300,10 @@ class BoundingBoxWidget(QWidget):
     
     def _get_handle_at_pos(self, pos):
         """判斷滑鼠位置是否在手柄上"""
-        # 轉換座標到畫布空間
         canvas_pos = self._widget_to_canvas_pos(pos)
         
         threshold = self.handle_size + 5
         
-        # 檢查四個角
         corners = {
             'tl': self.bbox.topLeft(),
             'tr': self.bbox.topRight(),
@@ -250,7 +316,6 @@ class BoundingBoxWidget(QWidget):
                 abs(canvas_pos.y() - point.y()) < threshold):
                 return handle
         
-        # 檢查四條邊
         if abs(canvas_pos.x() - self.bbox.center().x()) < threshold:
             if abs(canvas_pos.y() - self.bbox.top()) < threshold:
                 return 'top'
@@ -263,7 +328,6 @@ class BoundingBoxWidget(QWidget):
             if abs(canvas_pos.x() - self.bbox.right()) < threshold:
                 return 'right'
         
-        # 檢查是否在邊界框內（移動整個框）
         if self.bbox.contains(canvas_pos):
             return 'move'
         
@@ -302,7 +366,6 @@ class BoundingBoxWidget(QWidget):
             dx = current_pos.x() - self.drag_start_pos.x()
             dy = current_pos.y() - self.drag_start_pos.y()
             
-            # 根據手柄類型調整邊界框
             new_bbox = QRect(self.drag_start_bbox)
             
             if self.drag_handle == 'tl':
@@ -324,12 +387,10 @@ class BoundingBoxWidget(QWidget):
             elif self.drag_handle == 'move':
                 new_bbox.translate(dx, dy)
             
-            # 確保邊界框有效（寬高 > 10）
             if new_bbox.width() > 10 and new_bbox.height() > 10:
                 self.bbox = new_bbox.normalized()
                 self.update()
         else:
-            # 更新游標
             handle = self._get_handle_at_pos(event.pos())
             
             if handle in ['tl', 'br']:
@@ -367,21 +428,30 @@ class BoundingBoxWidget(QWidget):
 
 
 class AnnotationWindow(QMainWindow):
-    """標註主視窗"""
+    """標註主視窗（批次處理版）"""
     
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Draw-a-Person 標註工具")
+        self.setWindowTitle("Draw-a-Person Annotation Tool (Batch Processing)")
         self.setGeometry(100, 100, 1200, 800)
         
-        # 數據
+        # 批次處理數據
+        self.root_dir = None
+        self.selected_drawings = {}  # {subject_id: [drawing_paths]}
+        self.current_drawing_index = 0
+        self.all_results = []  # 所有標註結果
+        
+        # 當前繪畫數據
         self.csv_dir = None
         self.canvas_width = None
         self.canvas_height = None
         self.strokes = None
         self.bbox_widget = None
         
-        # 設置 UI
+        # 🆕 當前繪畫資訊（用於視窗標題）
+        self.current_subject_id = None
+        self.current_drawing_id = None
+        
         self._setup_ui()
     
     def _setup_ui(self):
@@ -392,41 +462,40 @@ class AnnotationWindow(QMainWindow):
         main_layout = QVBoxLayout()
         central_widget.setLayout(main_layout)
         
-        # 控制面板
         control_panel = self._create_control_panel()
         main_layout.addWidget(control_panel)
         
-        # 繪圖區域（稍後添加）
         self.drawing_container = QWidget()
         self.drawing_layout = QVBoxLayout()
         self.drawing_container.setLayout(self.drawing_layout)
         main_layout.addWidget(self.drawing_container, stretch=1)
         
-        # 狀態列
-        self.status_label = QLabel("請選擇資料夾...")
+        self.status_label = QLabel("Please select subject folders...")
         main_layout.addWidget(self.status_label)
     
     def _create_control_panel(self):
         """創建控制面板"""
-        group = QGroupBox("控制面板")
+        group = QGroupBox("Control Panel")
         layout = QHBoxLayout()
         
-        # 載入按鈕
-        self.load_btn = QPushButton("📁 選擇資料夾")
+        self.load_btn = QPushButton("📁 Select Subject Folders")
         self.load_btn.clicked.connect(self.on_load_clicked)
         layout.addWidget(self.load_btn)
         
-        # 重置按鈕
-        self.reset_btn = QPushButton("🔄 重置邊界框")
+        self.reset_btn = QPushButton("🔄 Reset Bounding Box")
         self.reset_btn.clicked.connect(self.on_reset_clicked)
         self.reset_btn.setEnabled(False)
         layout.addWidget(self.reset_btn)
         
-        # 匯出按鈕
-        self.export_btn = QPushButton("💾 匯出結果")
-        self.export_btn.clicked.connect(self.on_export_clicked)
-        self.export_btn.setEnabled(False)
-        layout.addWidget(self.export_btn)
+        self.next_btn = QPushButton("➡️ Next")
+        self.next_btn.clicked.connect(self.on_next_clicked)
+        self.next_btn.setEnabled(False)
+        layout.addWidget(self.next_btn)
+        
+        self.finish_btn = QPushButton("✅ Finish & Export")
+        self.finish_btn.clicked.connect(self.on_finish_clicked)
+        self.finish_btn.setEnabled(False)
+        layout.addWidget(self.finish_btn)
         
         layout.addStretch()
         
@@ -437,62 +506,160 @@ class AnnotationWindow(QMainWindow):
         """載入按鈕點擊"""
         default_dir = r"C:\Users\bml\OneDrive\Desktop\wacom_recordings"
         
-        folder = QFileDialog.getExistingDirectory(
-            self,
-            "選擇包含 ink_data.csv 的資料夾",
-            default_dir
+        # 🆕 支援多選
+        dialog = QFileDialog()
+        dialog.setFileMode(QFileDialog.Directory)
+        dialog.setOption(QFileDialog.DontUseNativeDialog, True)
+        
+        # 啟用多選
+        file_view = dialog.findChild(QListWidget, "listView")
+        if file_view:
+            file_view.setSelectionMode(QListWidget.MultiSelection)
+        
+        tree_view = dialog.findChild(QWidget, "treeView")
+        if tree_view:
+            tree_view.setSelectionMode(QListWidget.MultiSelection)
+        
+        if dialog.exec_() == QDialog.Accepted:
+            selected_folders = dialog.selectedFiles()
+            
+            if selected_folders:
+                self.root_dir = default_dir
+                self._process_selected_folders(selected_folders)
+    
+    def _process_selected_folders(self, selected_folders):
+        """處理選擇的資料夾"""
+        try:
+            logger.info(f"📂 選擇了 {len(selected_folders)} 個資料夾")
+            
+            # 🆕 找出所有符合格式的繪畫資料夾
+            subject_drawings = {}
+            pattern = re.compile(r'^\d+_DAP_\d{8}_\d{6}$')
+            
+            for subject_folder in selected_folders:
+                subject_id = os.path.basename(subject_folder)
+                
+                # 搜尋符合格式的子資料夾
+                if not os.path.isdir(subject_folder):
+                    continue
+                
+                matching_drawings = []
+                
+                for item in os.listdir(subject_folder):
+                    item_path = os.path.join(subject_folder, item)
+                    
+                    if os.path.isdir(item_path) and pattern.match(item):
+                        # 檢查是否有內層資料夾
+                        inner_folder_name = item.split('_')[0] + '_DAP'
+                        inner_folder_path = os.path.join(item_path, inner_folder_name)
+                        
+                        if os.path.isdir(inner_folder_path):
+                            ink_data_path = os.path.join(inner_folder_path, "ink_data.csv")
+                            
+                            if os.path.exists(ink_data_path):
+                                matching_drawings.append(inner_folder_path)
+                
+                if matching_drawings:
+                    subject_drawings[subject_id] = matching_drawings
+            
+            if not subject_drawings:
+                QMessageBox.warning(self, "Warning", "No matching drawing folders found")
+                return
+            
+            logger.info(f"✅ 找到 {len(subject_drawings)} 個受試者的繪畫")
+            
+            # 🆕 讓使用者選擇要分析的繪畫
+            dialog = DrawingSelectionDialog(subject_drawings, self)
+            
+            if dialog.exec_() == QDialog.Accepted:
+                self.selected_drawings = dialog.selected_drawings
+                self.current_drawing_index = 0
+                self.all_results = []
+                
+                # 載入第一個繪畫
+                self._load_next_drawing()
+            
+        except Exception as e:
+            logger.error(f"❌ 處理資料夾失敗: {e}")
+            import traceback
+            traceback.print_exc()
+            QMessageBox.critical(self, "Error", f"Processing failed:\n{e}")
+    
+    def _load_next_drawing(self):
+        """載入下一個繪畫"""
+        # 獲取所有繪畫的平面列表
+        all_drawings = []
+        for subject_id in sorted(self.selected_drawings.keys()):
+            for drawing_path in self.selected_drawings[subject_id]:
+                all_drawings.append((subject_id, drawing_path))
+        
+        if self.current_drawing_index >= len(all_drawings):
+            QMessageBox.information(self, "Complete", "All drawings have been annotated!")
+            self.finish_btn.setEnabled(True)
+            return
+        
+        subject_id, drawing_path = all_drawings[self.current_drawing_index]
+        
+        logger.info(f"📂 載入繪畫 {self.current_drawing_index + 1}/{len(all_drawings)}: {drawing_path}")
+        
+        self.load_data(drawing_path, subject_id)
+        
+        # 更新狀態
+        self.status_label.setText(
+            f"Progress: {self.current_drawing_index + 1}/{len(all_drawings)} | "
+            f"Subject: {subject_id} | Folder: {os.path.basename(drawing_path)}"
         )
         
-        if folder:
-            self.load_data(folder)
+        self.reset_btn.setEnabled(True)
+        self.next_btn.setEnabled(True)
     
-    def load_data(self, folder_path):
+    def load_data(self, folder_path, subject_id):
         """載入數據"""
         try:
-            logger.info(f"📂 載入資料夾: {folder_path}")
-            
-            # 檢查必要檔案
             ink_data_path = os.path.join(folder_path, "ink_data.csv")
             
-            # 🆕 移除警告，直接返回
             if not os.path.exists(ink_data_path):
                 logger.warning(f"⚠️ 找不到 ink_data.csv: {ink_data_path}")
                 return
             
             self.csv_dir = folder_path
+            self.current_subject_id = subject_id
             
-            # 載入 metadata
+            # 🆕🆕🆕 提取繪畫 ID（從資料夾名稱）
+            folder_name = os.path.basename(folder_path)
+            # 假設格式為 "繪畫id_DAP"，例如 "2_DAP"
+            match = re.match(r'^(\d+)_DAP$', folder_name)
+            if match:
+                self.current_drawing_id = match.group(1)
+            else:
+                self.current_drawing_id = "unknown"
+            
+            # 🆕🆕🆕 更新視窗標題（格式：PSP001_2_DAP）
+            window_title = f"{self.current_subject_id}_{self.current_drawing_id}_DAP"
+            self.setWindowTitle(window_title)
+            logger.info(f"📝 視窗標題已更新: {window_title}")
+            
             metadata = self._load_metadata()
             
-            # 載入墨水數據
             df = pd.read_csv(ink_data_path)
             logger.info(f"✅ 載入 {len(df)} 個點")
             
-            # 載入標記（橡皮擦事件）
             markers_df = self._load_markers()
             
-            # 解析筆劃
             self.strokes = self._parse_strokes(df)
             
-            # 應用刪除事件
             eraser_events = self._parse_eraser_events(markers_df)
             self.strokes = self._apply_deletion_events(self.strokes, eraser_events)
             
             logger.info(f"✅ 最終筆劃數: {len(self.strokes)}")
             
-            # 創建邊界框視窗
             self._create_bbox_widget()
-            
-            # 更新狀態
-            self.status_label.setText(f"✅ 已載入: {folder_path}")
-            self.reset_btn.setEnabled(True)
-            self.export_btn.setEnabled(True)
             
         except Exception as e:
             logger.error(f"❌ 載入失敗: {e}")
             import traceback
             traceback.print_exc()
-            QMessageBox.critical(self, "錯誤", f"載入失敗:\n{e}")
+            QMessageBox.critical(self, "Error", f"Loading failed:\n{e}")
     
     def _load_metadata(self):
         """載入 metadata.json"""
@@ -529,7 +696,6 @@ class AnnotationWindow(QMainWindow):
         current_stroke_id = None
         current_stroke = []
         
-        # 判斷座標類型
         x_max = df['x'].max()
         y_max = df['y'].max()
         is_normalized = (x_max <= 1.0 and y_max <= 1.0)
@@ -543,7 +709,6 @@ class AnnotationWindow(QMainWindow):
             
             stroke_id = int(stroke_id)
             
-            # 轉換座標
             if is_normalized:
                 x_pixel = row['x'] * self.canvas_width
                 y_pixel = row['y'] * self.canvas_height
@@ -553,17 +718,17 @@ class AnnotationWindow(QMainWindow):
             
             pressure = row['pressure']
             
-            if event_type == 1:  # 筆劃開始
+            if event_type == 1:
                 if current_stroke:
                     strokes[current_stroke_id] = current_stroke
                 
                 current_stroke_id = stroke_id
                 current_stroke = [(x_pixel, y_pixel, pressure)]
                 
-            elif event_type == 0:  # 筆劃中間點
+            elif event_type == 0:
                 current_stroke.append((x_pixel, y_pixel, pressure))
                 
-            elif event_type == 2:  # 筆劃結束
+            elif event_type == 2:
                 current_stroke.append((x_pixel, y_pixel, pressure))
                 strokes[current_stroke_id] = current_stroke
                 current_stroke = []
@@ -576,8 +741,6 @@ class AnnotationWindow(QMainWindow):
     
     def _parse_eraser_events(self, markers_df):
         """解析橡皮擦事件"""
-        import re
-        
         eraser_events = {}
         pattern = r'eraser_(\d+)\|deleted_strokes:\[([^\]]*)\]'
         
@@ -619,11 +782,9 @@ class AnnotationWindow(QMainWindow):
     
     def _create_bbox_widget(self):
         """創建邊界框視窗"""
-        # 清除舊的視窗
         for i in reversed(range(self.drawing_layout.count())):
             self.drawing_layout.itemAt(i).widget().setParent(None)
         
-        # 創建新視窗
         self.bbox_widget = BoundingBoxWidget(
             self.canvas_width,
             self.canvas_height,
@@ -639,69 +800,87 @@ class AnnotationWindow(QMainWindow):
             self.bbox_widget.update()
             logger.info("🔄 邊界框已重置")
     
-    def on_export_clicked(self):
-        """匯出結果"""
+    def on_next_clicked(self):
+        """下一個按鈕"""
         if not self.bbox_widget:
-            QMessageBox.warning(self, "錯誤", "請先載入數據")
             return
         
+        # 保存當前結果
+        bbox_info = self.bbox_widget.get_bbox_info()
+        
+        # 🆕 計算新特徵
+        canvas_area = self.canvas_width * self.canvas_height
+        size_ratio = bbox_info['area'] / canvas_area
+        y_ratio = bbox_info['height'] / self.canvas_height
+        x_ratio = bbox_info['width'] / self.canvas_width
+        
+        result = {
+            'subject_id': self.current_subject_id,
+            'drawing_id': self.current_drawing_id,  # 🆕 添加繪畫 ID
+            'folder_name': os.path.basename(self.csv_dir),
+            'canvas_width': self.canvas_width,
+            'canvas_height': self.canvas_height,
+            'canvas_area': canvas_area,
+            'bbox_x': bbox_info['x'],
+            'bbox_y': bbox_info['y'],
+            'bbox_width': bbox_info['width'],
+            'bbox_height': bbox_info['height'],
+            'bbox_area': bbox_info['area'],
+            'bbox_center_x': bbox_info['center_x'],
+            'bbox_center_y': bbox_info['center_y'],
+            'aspect_ratio': bbox_info['aspect_ratio'],
+            'size_ratio': size_ratio,  # 🆕
+            'y_ratio': y_ratio,  # 🆕
+            'x_ratio': x_ratio  # 🆕
+        }
+        
+        self.all_results.append(result)
+        
+        # 🆕 匯出個別結果
+        self._export_individual_result(result)
+        
+        # 載入下一個
+        self.current_drawing_index += 1
+        self._load_next_drawing()
+    
+    def _export_individual_result(self, result):
+        """匯出個別結果"""
         try:
-            # 獲取邊界框資訊
-            bbox_info = self.bbox_widget.get_bbox_info()
-            
-            # 🆕🆕🆕 生成輸出路徑（csv_dir 上一層的 feature_quantization 目錄）
             parent_dir = os.path.dirname(self.csv_dir)
             output_dir = os.path.join(parent_dir, "feature_quantization")
-            
-            # 🆕 如果目錄不存在則創建
             os.makedirs(output_dir, exist_ok=True)
-            logger.info(f"📁 輸出目錄: {output_dir}")
             
-            # 🆕 使用當前資料夾名稱作為檔案前綴
-            folder_name = os.path.basename(self.csv_dir)
+            folder_name = result['folder_name']
             
+            # 匯出 PNG
             output_png = os.path.join(output_dir, f"{folder_name}_annotated.png")
+            self._export_annotated_image(output_png, result)
+            
+            # 匯出 Excel
             output_excel = os.path.join(output_dir, f"{folder_name}_annotation.xlsx")
+            self._export_excel(output_excel, result)
             
-            # 1. 匯出 PNG（帶標註框）
-            self._export_annotated_image(output_png, bbox_info)
-            
-            # 2. 匯出 Excel
-            self._export_excel(output_excel, bbox_info)
-            
-            QMessageBox.information(
-                self,
-                "成功",
-                f"✅ 匯出成功！\n\nPNG: {output_png}\nExcel: {output_excel}"
-            )
-            
-            logger.info("✅ 匯出完成")
+            logger.info(f"✅ 個別結果已匯出: {folder_name}")
             
         except Exception as e:
-            logger.error(f"❌ 匯出失敗: {e}")
-            import traceback
-            traceback.print_exc()
-            QMessageBox.critical(self, "錯誤", f"匯出失敗:\n{e}")
+            logger.error(f"❌ 匯出個別結果失敗: {e}")
     
-    def _export_annotated_image(self, output_path, bbox_info):
+    def _export_annotated_image(self, output_path, result):
         """匯出帶標註框的圖片"""
-        # 使用背景圖
         pixmap = QPixmap(self.bbox_widget.background_pixmap)
         
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.Antialiasing)
         
-        # 繪製邊界框
         pen = QPen(QColor(255, 0, 0), 3)
         painter.setPen(pen)
         painter.setBrush(Qt.NoBrush)
         painter.drawRect(self.bbox_widget.bbox)
         
-        # 繪製標籤
         painter.setPen(QPen(QColor(255, 0, 0)))
         painter.drawText(
             self.bbox_widget.bbox.topLeft() + QPoint(5, -5),
-            f"Person ({bbox_info['width']}x{bbox_info['height']})"
+            f"Person ({result['bbox_width']}x{result['bbox_height']})"
         )
         
         painter.end()
@@ -709,26 +888,30 @@ class AnnotationWindow(QMainWindow):
         pixmap.save(output_path, 'PNG')
         logger.info(f"✅ PNG 已保存: {output_path}")
     
-    def _export_excel(self, output_path, bbox_info):
+    def _export_excel(self, output_path, result):
         """匯出 Excel"""
         data = {
             '項目': [
                 '全圖寬度', '全圖高度', '全圖面積',
                 '物件 X 起點', '物件 Y 起點', '物件寬度', '物件高度',
-                '物件面積', '物件長寬比', '物件中心 X', '物件中心 Y'
+                '物件面積', '物件長寬比', '物件中心 X', '物件中心 Y',
+                '物件大小比例', 'Y軸比例', 'X軸比例'  # 🆕
             ],
             '數值': [
-                self.canvas_width,
-                self.canvas_height,
-                self.canvas_width * self.canvas_height,
-                bbox_info['x'],
-                bbox_info['y'],
-                bbox_info['width'],
-                bbox_info['height'],
-                bbox_info['area'],
-                f"{bbox_info['aspect_ratio']:.2f}",
-                f"{bbox_info['center_x']:.1f}",
-                f"{bbox_info['center_y']:.1f}"
+                result['canvas_width'],
+                result['canvas_height'],
+                result['canvas_area'],
+                result['bbox_x'],
+                result['bbox_y'],
+                result['bbox_width'],
+                result['bbox_height'],
+                result['bbox_area'],
+                f"{result['aspect_ratio']:.2f}",
+                f"{result['bbox_center_x']:.1f}",
+                f"{result['bbox_center_y']:.1f}",
+                f"{result['size_ratio']:.4f}",  # 🆕
+                f"{result['y_ratio']:.4f}",  # 🆕
+                f"{result['x_ratio']:.4f}"  # 🆕
             ]
         }
         
@@ -736,6 +919,79 @@ class AnnotationWindow(QMainWindow):
         df.to_excel(output_path, index=False, sheet_name='標註數據')
         
         logger.info(f"✅ Excel 已保存: {output_path}")
+    
+    def on_finish_clicked(self):
+        """完成並匯出統計結果"""
+        if not self.all_results:
+            QMessageBox.warning(self, "Warning", "No results to export")
+            return
+        
+        try:
+            # 🆕 匯出統計結果
+            self._export_summary_statistics()
+            
+            QMessageBox.information(
+                self,
+                "Success",
+                f"✅ All results exported!\n\nProcessed {len(self.all_results)} drawings"
+            )
+            
+            logger.info("✅ 批次處理完成")
+            
+        except Exception as e:
+            logger.error(f"❌ 匯出統計結果失敗: {e}")
+            import traceback
+            traceback.print_exc()
+            QMessageBox.critical(self, "Error", f"Export failed:\n{e}")
+    
+    def _export_summary_statistics(self):
+        """匯出統計結果（含 histogram）"""
+        # 創建 DataFrame
+        df = pd.DataFrame(self.all_results)
+        
+        # 匯出到根目錄
+        output_dir = os.path.join(self.root_dir, "feature_quantization")
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # 匯出 Excel
+        excel_path = os.path.join(output_dir, "summary_statistics.xlsx")
+        df.to_excel(excel_path, index=False, sheet_name='All Subjects')
+        logger.info(f"✅ 統計 Excel 已保存: {excel_path}")
+        
+        # 🆕 生成 histogram
+        self._generate_histograms(df, output_dir)
+    
+    def _generate_histograms(self, df, output_dir):
+        """生成 histogram（🆕 全英文版本）"""
+        features = [
+            ('size_ratio', 'Object Size Ratio'),  # 🆕 英文
+            ('y_ratio', 'Y-axis Ratio'),  # 🆕 英文
+            ('x_ratio', 'X-axis Ratio')  # 🆕 英文
+        ]
+        
+        for feature_key, feature_name in features:
+            plt.figure(figsize=(10, 6))
+            
+            data = df[feature_key]
+            mean_val = data.mean()
+            std_val = data.std()
+            
+            plt.hist(data, bins=20, color='skyblue', edgecolor='black', alpha=0.7)
+            plt.axvline(mean_val, color='red', linestyle='--', linewidth=2, label=f'Mean = {mean_val:.2f}')
+            
+            # 🆕🆕🆕 全部改為英文
+            plt.xlabel(feature_name, fontsize=12)
+            plt.ylabel('Frequency', fontsize=12)
+            plt.title(f'{feature_name} Distribution\nMean ± SD = {mean_val:.2f} ± {std_val:.2f}', fontsize=14)
+            plt.legend()
+            plt.grid(axis='y', alpha=0.3)
+            
+            # 保存
+            output_path = os.path.join(output_dir, f"histogram_{feature_key}.png")
+            plt.savefig(output_path, dpi=150, bbox_inches='tight')
+            plt.close()
+            
+            logger.info(f"✅ Histogram saved: {output_path}")
 
 
 def main():
