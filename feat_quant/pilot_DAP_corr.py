@@ -167,10 +167,10 @@ def create_bar_chart(df, score_col, chart_title, output_filename, show_legend=Fa
         print(f"⚠️ {score_col}: 無有效資料")
         return
     
-    # 🆕 創建圖表（加大高度以容納副橫軸）
+    # 創建圖表（加大高度以容納副橫軸）
     fig, ax = plt.subplots(figsize=(16, 10))
     
-    # 🆕 使用位置索引作為 X 軸
+    # 使用位置索引作為 X 軸
     x_positions = np.arange(len(valid_data))
     y_values = valid_data[score_col].values
     subject_ids = valid_data['受試者編號'].values
@@ -182,36 +182,36 @@ def create_bar_chart(df, score_col, chart_title, output_filename, show_legend=Fa
     bars = ax.bar(x_positions, y_values, width=0.8, alpha=0.8, 
                    color=colors, edgecolor='black', linewidth=1.5)
     
-    # 在柱子上方顯示數值
+    # 🆕 在柱子上方顯示數值（放大字體）
     for i, (x, y) in enumerate(zip(x_positions, y_values)):
         ax.text(x, y + 0.15, f'{y:.0f}', ha='center', va='bottom', 
-                fontsize=12, fontweight='bold')
+                fontsize=18, fontweight='bold')  # 🆕 12 → 18
     
-    # 🆕🆕🆕 設定標題和軸標籤
-    ax.set_xlabel('受試者編號', fontsize=26, fontweight='bold', labelpad=10)
-    ax.set_ylabel('總分', fontsize=26, fontweight='bold')  # 🆕 統一改成「總分」
-    ax.set_title(chart_title, fontsize=28, fontweight='bold', pad=40)  # 🆕 使用傳入的標題
+    # 🆕 設定標題和軸標籤（放大字體）
+    ax.set_xlabel('受試者編號', fontsize=32, fontweight='bold', labelpad=15)  # 🆕 26 → 32
+    ax.set_ylabel('總分', fontsize=32, fontweight='bold')  # 🆕 26 → 32
+    ax.set_title(chart_title, fontsize=36, fontweight='bold', pad=50)  # 🆕 28 → 36
     
-    # 🆕🆕🆕 設定主橫軸（受試者編號）
+    # 🆕 設定主橫軸（受試者編號）（放大字體）
     ax.set_xticks(x_positions)
-    ax.set_xticklabels(subject_ids, rotation=45, ha='right', fontsize=14)
+    ax.set_xticklabels(subject_ids, rotation=45, ha='right', fontsize=20)  # 🆕 14 → 20
     
-    # 🆕🆕🆕 設定 Y 軸刻度（統一 0-6）
+    # 設定 Y 軸刻度（統一 0-6）
     ax.set_ylim(-0.3, 6.5)
     ax.set_yticks(range(0, 7))
     
-    # 放大刻度標籤字體
-    ax.tick_params(axis='y', which='major', labelsize=18)
+    # 🆕 放大刻度標籤字體
+    ax.tick_params(axis='y', which='major', labelsize=24)  # 🆕 18 → 24
     
-    # 🆕🆕🆕 添加副橫軸（MADRS_T）
+    # 🆕 添加副橫軸（MADRS_T）（放大字體）
     ax2 = ax.twiny()  # 創建共享 Y 軸的第二個 X 軸
     ax2.set_xlim(ax.get_xlim())
     ax2.set_xticks(x_positions)
-    ax2.set_xticklabels(madrs_scores, fontsize=14)
-    ax2.set_xlabel('MADRS_T', fontsize=26, fontweight='bold', labelpad=10)
-    ax2.tick_params(axis='x', which='major', labelsize=14)
+    ax2.set_xticklabels(madrs_scores, fontsize=20)  # 🆕 14 → 20
+    ax2.set_xlabel('MADRS_T', fontsize=32, fontweight='bold', labelpad=15)  # 🆕 26 → 32
+    ax2.tick_params(axis='x', which='major', labelsize=20)  # 🆕 14 → 20
     
-    # 只在 show_legend=True 時顯示圖例
+    # 🆕 只在 show_legend=True 時顯示圖例（放大字體）
     if show_legend:
         from matplotlib.patches import Patch
         legend_elements = [
@@ -220,7 +220,7 @@ def create_bar_chart(df, score_col, chart_title, output_filename, show_legend=Fa
             Patch(facecolor='#e67e22', edgecolor='black', label='中度 (20-34)'),
             Patch(facecolor='#e74c3c', edgecolor='black', label='重度 (35-60)')
         ]
-        ax.legend(handles=legend_elements, loc='upper left', fontsize=16, framealpha=0.9)
+        ax.legend(handles=legend_elements, loc='upper left', fontsize=20, framealpha=0.9)  # 🆕 16 → 20
     
     # 美化圖表
     ax.grid(True, alpha=0.3, linestyle='--', linewidth=1.5, axis='y')
@@ -318,15 +318,15 @@ def main():
     for x_col, y_col, filename in scatter_plots:
         create_scatter_plot(df, x_col, y_col, filename)
     
-    # 🆕🆕🆕 定義要繪製的柱狀圖（包含圖表標題和是否顯示圖例）
+    # 定義要繪製的柱狀圖（包含圖表標題和是否顯示圖例）
     bar_charts = [
-        ('第一大類總分', '第一大類', 'bar_category1_vs_MADRS.png', True),   # 🆕 顯示圖例
-        ('第二大類總分', '第二大類', 'bar_category2_vs_MADRS.png', False),  # 🆕 不顯示圖例
-        ('第三大類總分', '第三大類', 'bar_category3_vs_MADRS.png', False),  # 🆕 不顯示圖例
-        ('一至三類總分', '三類總分', 'bar_total_vs_MADRS.png', False)       # 🆕 不顯示圖例
+        ('第一大類總分', '第一大類', 'bar_category1_vs_MADRS.png', True),
+        ('第二大類總分', '第二大類', 'bar_category2_vs_MADRS.png', False),
+        ('第三大類總分', '第三大類', 'bar_category3_vs_MADRS.png', False),
+        ('一至三類總分', '三類總分', 'bar_total_vs_MADRS.png', False)
     ]
     
-    # 🆕🆕🆕 繪製柱狀圖（傳入圖表標題）
+    # 繪製柱狀圖（傳入圖表標題）
     print("\n📊 開始繪製柱狀圖...")
     for score_col, chart_title, filename, show_legend in bar_charts:
         create_bar_chart(df_sorted, score_col, chart_title, filename, show_legend=show_legend)
