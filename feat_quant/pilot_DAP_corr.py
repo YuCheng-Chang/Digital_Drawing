@@ -105,8 +105,8 @@ def create_scatter_plot(df, x_col, y_col, output_filename):
         ax.set_xlim(-0.5, 10.5)
         ax.set_xticks(range(0, 11))
     elif '一至三類總分' in x_col:
-        ax.set_xlim(-0.5, 27.5)
-        ax.set_xticks(range(0, 28, 2))
+        ax.set_xlim(-0.5, 10.5)
+        ax.set_xticks(range(0, 10, 1))
     
     # 設定 Y 軸刻度（整數）
     y_min = int(np.floor(y.min()))
