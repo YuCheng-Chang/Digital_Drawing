@@ -1,0 +1,77 @@
+================================================================================
+LSL Recording Summary (Extended Time-Range Based Cleaned Data)
+================================================================================
+
+Session ID: 2_FD
+Recording Start: 2026-01-14T19:24:34.618359
+Recording End: 2026-01-14T19:25:37.635795
+Duration: 63.02 seconds
+
+Data Cleaning Summary:
+  Cleaning Method: Time-Range Based (Extended)
+  Cleaning Rules:
+    1. stroke_start → tool_switch|from:pen|to:eraser (delete by time range)
+    2. stroke_start → tool_switch|from:pen|to:pen (delete by time range)
+  Original Markers: 43
+  Cleaned Markers: 43
+  Removed Markers: 0
+  Original Ink Samples: 1236
+  Cleaned Ink Samples: 1236
+  Removed Ink Samples: 0
+    • pen→eraser: 0 samples
+    • pen→pen: 0 samples
+
+Final Data Counts:
+  Total Ink Samples: 1236
+  Total Markers: 43
+
+Cleaned Ink Data Statistics:
+  Time range: 3380449.808 - 3380489.974 s
+  Average sampling rate: 30.8 Hz
+  Pressure range: 0.000 - 0.894
+  Average pressure: 0.599
+
+Event Markers (Extended Time-Range Based Cleaned):
+  [3380435.825] recording_start
+  [3380449.808] stroke_start_0
+  [3380450.667] stroke_end_0
+  [3380455.915] color_switch|from:#85ff77|to:#aa007f
+  [3380456.918] stroke_start_1
+  [3380457.194] stroke_end_1
+  [3380457.625] stroke_start_2
+  [3380457.824] stroke_end_2
+  [3380458.089] stroke_start_3
+  [3380458.312] stroke_end_3
+  [3380463.032] color_switch|from:#aa007f|to:#000000
+  [3380464.218] stroke_start_4
+  [3380464.896] stroke_end_4
+  [3380466.813] stroke_start_5
+  [3380466.954] stroke_end_5
+  [3380467.610] stroke_start_6
+  [3380467.899] stroke_end_6
+  [3380468.291] stroke_start_7
+  [3380468.827] stroke_end_7
+  [3380471.121] stroke_start_8
+  [3380471.630] stroke_end_8
+  [3380473.023] tool_switch|from:pen|to:eraser
+  [3380474.878] tool_switch|from:eraser|to:pen
+  [3380475.539] stroke_start_9
+  [3380475.764] stroke_end_9
+  [3380478.199] tool_switch|from:pen|to:eraser
+  [3380478.743] eraser_0|deleted_strokes:[8]
+  [3380483.175] color_switch|from:#000000|to:#ffaa7f
+  [3380484.756] eraser_0|deleted_strokes:[9]
+  [3380485.949] tool_switch|from:eraser|to:pen
+  [3380486.474] stroke_start_10
+  [3380487.052] stroke_end_10
+  [3380488.232] stroke_start_11
+  [3380488.447] stroke_end_11
+  [3380488.868] stroke_start_12
+  [3380488.976] stroke_end_12
+  [3380489.228] stroke_start_13
+  [3380489.380] stroke_end_13
+  [3380489.603] stroke_start_14
+  [3380489.784] stroke_end_14
+  [3380489.843] stroke_start_15
+  [3380489.974] stroke_end_15
+  [3380498.791] recording_end

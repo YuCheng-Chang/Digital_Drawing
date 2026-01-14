@@ -1,0 +1,15 @@
+timestamp,marker_text
+3380386.645554,recording_start
+3380407.363891,color_switch|from:#000000|to:#000000
+3380408.219232,stroke_start_0
+3380408.711000,stroke_end_0
+3380415.611465,color_switch|from:#000000|to:#aa55ff
+3380416.632130,stroke_start_1
+3380417.035991,stroke_end_1
+3380420.822363,color_switch|from:#aa55ff|to:#85ff77
+3380421.683814,stroke_start_2
+3380421.871330,stroke_end_2
+3380423.256530,tool_switch|from:pen|to:eraser
+3380424.780354,"eraser_0|deleted_strokes:[1, 2]"
+3380425.523490,eraser_0|deleted_strokes:[0]
+3380435.734228,recording_end
