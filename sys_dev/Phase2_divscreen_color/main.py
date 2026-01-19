@@ -500,8 +500,13 @@ class WacomDrawingCanvas(QWidget):
             
             # 10. 重新設置墨水系統
             self._reset_ink_system()
-            
+                    
+            # 🆕🆕🆕 11. 更新顏色按鈕可見性
+            self._update_color_button_visibility()
+                    
             self.logger.info(f"✅ 新繪畫已開始 (繪畫編號: {self.drawing_counter})")
+            
+
             
             # 🆕🆕🆕 更新控制視窗資訊
             if self.control_window:
@@ -639,7 +644,9 @@ class WacomDrawingCanvas(QWidget):
         self.color_button.setToolTip("選擇顏色")
         self.color_button.clicked.connect(self.choose_color)
         toolbar_layout.addWidget(self.color_button)
-
+        
+        # 🆕🆕🆕 根據繪畫類型決定是否顯示顏色按鈕
+        self._update_color_button_visibility()
         
         # 添加彈性空間
         toolbar_layout.addStretch()
@@ -657,6 +664,26 @@ class WacomDrawingCanvas(QWidget):
         main_layout.setSpacing(0)
         
         self.setLayout(main_layout)
+
+    def _update_color_button_visibility(self):
+        """🆕 根據繪畫類型更新顏色按鈕可見性"""
+        if self.current_drawing_info:
+            drawing_type = self.current_drawing_info.get('drawing_type', '')
+            
+            # 只有 FD (Free Drawing Test) 顯示顏色按鈕
+            if drawing_type == 'FD':
+                self.color_button.show()
+                self.logger.info("✅ 顏色按鈕已顯示（Free Drawing Test）")
+            else:
+                self.color_button.hide()
+                # 重置為黑色
+                self.current_color = QColor('#000000')
+                self.current_color_name = '#000000'
+                self.logger.info(f"⚠️ 顏色按鈕已隱藏（{drawing_type}）")
+        else:
+            # 如果沒有繪畫資訊，隱藏顏色按鈕
+            self.color_button.hide()
+            self.logger.info("⚠️ 顏色按鈕已隱藏（無繪畫資訊）")
 
     def choose_color(self):
         """選擇顏色"""
@@ -1248,7 +1275,7 @@ class WacomDrawingCanvas(QWidget):
 
     
     def export_canvas_image(self, output_path: str):
-        """將畫布匯出為 PNG 圖片"""
+        """將畫布匯出為 PNG 圖片（🆕 使用顏色）"""
         try:
             from PyQt5.QtGui import QPixmap
             
@@ -1261,12 +1288,16 @@ class WacomDrawingCanvas(QWidget):
             painter = QPainter(pixmap)
             painter.setRenderHint(QPainter.Antialiasing)
             
-            pen = QPen(QColor(0, 0, 0), 2)
-            painter.setPen(pen)
-            
             for stroke in self.all_strokes:
                 if stroke.get('is_deleted', False):
                     continue
+                
+                # 🆕 獲取筆劃的顏色
+                stroke_color_name = stroke.get('color', '#000000')
+                stroke_color = QColor(stroke_color_name)
+                
+                pen = QPen(stroke_color, 2)  # 🆕 使用筆劃的顏色
+                painter.setPen(pen)
                 
                 points = stroke['points']
                 for i in range(len(points) - 1):
@@ -1296,6 +1327,7 @@ class WacomDrawingCanvas(QWidget):
             import traceback
             self.logger.error(traceback.format_exc())
             return False
+
 
     def closeEvent(self, event):
         """視窗關閉時的處理（簡化版）"""
