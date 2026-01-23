@@ -1,3 +1,4 @@
+# LSLStreamManager.py
 """
 LSL Stream Manager for Digital Ink Data
 

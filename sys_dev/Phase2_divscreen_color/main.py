@@ -1,7 +1,7 @@
 # main.py
-from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QHBoxLayout, QVBoxLayout, QMessageBox, QDesktopWidget, QLabel
+from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QHBoxLayout, QVBoxLayout, QMessageBox, QDesktopWidget, QLabel,QColorDialog
 from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtGui import QPainter, QPen, QColor, QTabletEvent
+from PyQt5.QtGui import QPainter, QPen, QColor, QTabletEvent,QPixmap, QCursor, QBrush
 import sys
 import time
 from datetime import datetime
@@ -232,7 +232,10 @@ class WacomDrawingCanvas(QWidget):
         self.control_window = None
         self._create_control_window()
 
+        # 🆕🆕🆕 初始化自定義游標
+        self._update_cursor()
         
+        self.logger.info("✅ WacomDrawingCanvas 初始化完成")
         # 初始化LSL
         self._initialize_lsl()
         
@@ -245,6 +248,96 @@ class WacomDrawingCanvas(QWidget):
             'on_stroke_completed',
             self._on_stroke_completed_callback
         )
+
+    def _create_pen_cursor(self, color: QColor, size: int = 8) -> QCursor:
+        """
+        創建自定義筆頭游標（增強版：帶陰影，無邊框，無高光點）
+        
+        Args:
+            color: 游標顏色
+            size: 游標大小（像素）
+        
+        Returns:
+            QCursor: 自定義游標
+        """
+        from PyQt5.QtGui import QPixmap, QCursor, QPainter, QBrush, QRadialGradient
+        from PyQt5.QtCore import Qt, QPointF
+        
+        try:
+            # 創建透明背景的 pixmap（稍大一點以容納陰影）
+            pixmap_size = size + 8
+            pixmap = QPixmap(pixmap_size, pixmap_size)
+            pixmap.fill(Qt.transparent)
+            
+            # 繪製筆頭
+            painter = QPainter(pixmap)
+            painter.setRenderHint(QPainter.Antialiasing)
+            
+            center = pixmap_size // 2
+            
+            # 🎨 繪製陰影（可選）
+            shadow_color = QColor(0, 0, 0, 50)
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QBrush(shadow_color))
+            painter.drawEllipse(center - size // 2 + 1, center - size // 2 + 1, size, size)
+            
+            # 🎨 繪製主體（使用漸變增加立體感）
+            gradient = QRadialGradient(QPointF(center - size // 4, center - size // 4), size)
+            gradient.setColorAt(0, color.lighter(130))  # 高光
+            gradient.setColorAt(1, color)  # 主色
+            
+            painter.setPen(Qt.NoPen)  # 無邊框
+            painter.setBrush(QBrush(gradient))
+            painter.drawEllipse(center - size // 2, center - size // 2, size, size)
+            
+            # 🆕🆕🆕 移除高光點（刪除以下代碼）
+            # painter.setPen(Qt.NoPen)
+            # painter.setBrush(QBrush(QColor(255, 255, 255, 150)))
+            # highlight_size = size // 4
+            # painter.drawEllipse(
+            #     center - size // 4 - highlight_size // 2,
+            #     center - size // 4 - highlight_size // 2,
+            #     highlight_size,
+            #     highlight_size
+            # )
+            
+            painter.end()
+            
+            # 創建游標（熱點在中心）
+            cursor = QCursor(pixmap, center, center)
+            
+            self.logger.debug(f"✅ 創建自定義游標（無邊框，無高光點）: color={color.name()}, size={size}")
+            return cursor
+            
+        except Exception as e:
+            self.logger.error(f"❌ 創建自定義游標失敗: {e}")
+            return QCursor(Qt.CrossCursor)
+
+
+    def _update_cursor(self):
+        """
+        根據當前工具和顏色更新游標
+        """
+        try:
+            if self.current_tool == ToolType.PEN:
+                # 🖊️ 筆工具：使用當前顏色的圓點
+                cursor = self._create_pen_cursor(self.current_color, size=8)
+                self.setCursor(cursor)
+                self.logger.debug(f"🖱️ 游標已更新為筆頭（顏色: {self.current_color_name}）")
+            
+            elif self.current_tool == ToolType.ERASER:
+                # 🧈 橡皮擦：使用圓形游標（灰色）
+                cursor = self._create_pen_cursor(QColor(200, 200, 200), size=12)
+                self.setCursor(cursor)
+                self.logger.debug("🖱️ 游標已更新為橡皮擦")
+            
+            else:
+                # 其他工具：使用默認箭頭
+                self.setCursor(Qt.ArrowCursor)
+                self.logger.debug("🖱️ 游標已重置為箭頭")
+        
+        except Exception as e:
+            self.logger.error(f"❌ 更新游標失敗: {e}")
 
     def _detect_screens(self):
         """🆕 檢測螢幕配置並判斷是否為延伸模式"""
@@ -619,75 +712,149 @@ class WacomDrawingCanvas(QWidget):
 
 
     def _setup_toolbar(self):
-        """設置工具欄（修改版：只顯示圖示，懸停顯示提示）"""
-        toolbar_layout = QHBoxLayout()
+        """設置工具欄（修改版：垂直佈局，左側邊置中，放大圖示）"""
+        
+        # 🆕 使用垂直佈局（VBoxLayout）
+        toolbar_layout = QVBoxLayout()
+        toolbar_layout.setSpacing(20)  # 增加按鈕間距
+        toolbar_layout.setContentsMargins(10, 0, 10, 0)  # 左右邊距
+        
+        # 🆕 設置更大的按鈕尺寸
+        button_size = 80  # 從 60 增加到 80
+        
+        # 🆕 添加頂部彈性空間（讓按鈕垂直置中）
+        toolbar_layout.addStretch()
         
         # 筆工具按鈕
         self.pen_button = QPushButton("🖊️")
-        self.pen_button.setFixedSize(60, 40)
-        self.pen_button.setStyleSheet("background-color: lightblue;")
+        self.pen_button.setFixedSize(button_size, button_size)
+        self.pen_button.setStyleSheet("""
+            QPushButton {
+                background-color: lightblue;
+                font-size: 40px;  /* 放大圖示 */
+                border-radius: 10px;
+                border: 2px solid #2196F3;
+            }
+            QPushButton:hover {
+                background-color: #81D4FA;
+            }
+        """)
         self.pen_button.setToolTip("筆")
         self.pen_button.clicked.connect(lambda: self.switch_tool(ToolType.PEN))
-        toolbar_layout.addWidget(self.pen_button)
+        toolbar_layout.addWidget(self.pen_button, alignment=Qt.AlignCenter)
         
         # 橡皮擦按鈕
         self.eraser_button = QPushButton("🧈")
-        self.eraser_button.setFixedSize(60, 40)
+        self.eraser_button.setFixedSize(button_size, button_size)
+        self.eraser_button.setStyleSheet("""
+            QPushButton {
+                background-color: white;
+                font-size: 40px;  /* 放大圖示 */
+                border-radius: 10px;
+                border: 2px solid #cccccc;
+            }
+            QPushButton:hover {
+                background-color: #f0f0f0;
+            }
+        """)
         self.eraser_button.setToolTip("橡皮擦")
         self.eraser_button.clicked.connect(lambda: self.switch_tool(ToolType.ERASER))
-        toolbar_layout.addWidget(self.eraser_button)
+        toolbar_layout.addWidget(self.eraser_button, alignment=Qt.AlignCenter)
         
         # 🆕 顏色選擇按鈕
         self.color_button = QPushButton("🎨")
-        self.color_button.setFixedSize(60, 40)
-        self.color_button.setStyleSheet(f"background-color: {self.current_color.name()};")
+        self.color_button.setFixedSize(button_size, button_size)
+        self.color_button.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.current_color.name()};
+                font-size: 40px;  /* 放大圖示 */
+                border-radius: 10px;
+                border: 2px solid #666666;
+            }}
+            QPushButton:hover {{
+                border: 3px solid #333333;
+            }}
+        """)
         self.color_button.setToolTip("選擇顏色")
         self.color_button.clicked.connect(self.choose_color)
-        toolbar_layout.addWidget(self.color_button)
+        toolbar_layout.addWidget(self.color_button, alignment=Qt.AlignCenter)
         
         # 🆕🆕🆕 根據繪畫類型決定是否顯示顏色按鈕
         self._update_color_button_visibility()
         
-        # 添加彈性空間
+        # 🆕 添加底部彈性空間（讓按鈕垂直置中）
         toolbar_layout.addStretch()
         
-        # 創建工具欄容器
+        # 🆕 創建工具欄容器（垂直條）
         toolbar_widget = QWidget()
         toolbar_widget.setLayout(toolbar_layout)
-        toolbar_widget.setFixedHeight(50)
+        toolbar_widget.setFixedWidth(120)  # 設置工具欄寬度
+        toolbar_widget.setStyleSheet("""
+            QWidget {
+                background-color: #f5f5f5;
+                border-right: 2px solid #cccccc;
+            }
+        """)
         
-        # 創建主佈局
-        main_layout = QVBoxLayout()
-        main_layout.addWidget(toolbar_widget)
-        main_layout.addStretch()
+        # 🆕 創建主佈局（水平佈局：工具欄 + 畫布）
+        main_layout = QHBoxLayout()
+        main_layout.addWidget(toolbar_widget)  # 左側工具欄
+        main_layout.addStretch()  # 右側畫布區域（自動填充）
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
         
         self.setLayout(main_layout)
 
+
     def _update_color_button_visibility(self):
-        """🆕 根據繪畫類型更新顏色按鈕可見性"""
+        """🆕 根據繪畫類型更新顏色按鈕可見性（支援 pretest 和 FD）"""
         if self.current_drawing_info:
             drawing_type = self.current_drawing_info.get('drawing_type', '')
             
-            # 只有 FD (Free Drawing Test) 顯示顏色按鈕
-            if drawing_type == 'FD':
+            # 🔧 修復：pretest 和 FD 都顯示顏色按鈕
+            if drawing_type in ['FD', 'pretest']:
                 self.color_button.show()
-                self.logger.info("✅ 顏色按鈕已顯示（Free Drawing Test）")
+                
+                # ✅ 使用統一方法更新按鈕樣式
+                self._update_color_button_style()
+                
+                self.logger.info(f"✅ 顏色按鈕已顯示（{drawing_type}），當前顏色: {self.current_color_name}")
             else:
                 self.color_button.hide()
-                # 重置為黑色
+                
+                # 重置為黑色（但不更新按鈕樣式，因為已隱藏）
                 self.current_color = QColor('#000000')
                 self.current_color_name = '#000000'
-                self.logger.info(f"⚠️ 顏色按鈕已隱藏（{drawing_type}）")
+                
+                self.logger.info(f"⚠️ 顏色按鈕已隱藏（{drawing_type}），顏色已重置為黑色")
         else:
             # 如果沒有繪畫資訊，隱藏顏色按鈕
             self.color_button.hide()
-            self.logger.info("⚠️ 顏色按鈕已隱藏（無繪畫資訊）")
+            
+            # 重置為黑色
+            self.current_color = QColor('#000000')
+            self.current_color_name = '#000000'
+            
+            self.logger.info("⚠️ 顏色按鈕已隱藏（無繪畫資訊），顏色已重置為黑色")
+
+
+    def _update_color_button_style(self):
+        """🆕 更新顏色按鈕的樣式（背景色）- 統一管理"""
+        self.color_button.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.current_color_name};
+                font-size: 40px;
+                border-radius: 10px;
+                border: 2px solid #666666;
+            }}
+            QPushButton:hover {{
+                border: 3px solid #333333;
+            }}
+        """)
+        self.logger.debug(f"🎨 顏色按鈕樣式已更新: {self.current_color_name}")
 
     def choose_color(self):
         """選擇顏色"""
-        from PyQt5.QtWidgets import QColorDialog
         
         try:
             # 強制完成當前筆劃
@@ -726,13 +893,16 @@ class WacomDrawingCanvas(QWidget):
             if color.isValid():
                 # 更新為 hex code
                 self.current_color = color
-                self.current_color_name = color.name()  # 這裡已經是 hex code（如 '#ff0000'）
+                self.current_color_name = color.name()
                 
-                # 更新按鈕背景色
-                self.color_button.setStyleSheet(f"background-color: {self.current_color_name};")
+                # ✅ 使用統一方法更新按鈕樣式
+                self._update_color_button_style()
                 
                 # 記錄顏色切換事件到 LSL
                 self.lsl.mark_color_switch(old_color, self.current_color_name)
+                
+                # 更新游標顏色
+                self._update_cursor()
                 
                 self.logger.info(f"🎨 顏色已切換: {old_color} → {self.current_color_name}")
             else:
@@ -742,6 +912,7 @@ class WacomDrawingCanvas(QWidget):
             self.logger.error(f"❌ 選擇顏色失敗: {e}")
             import traceback
             self.logger.error(traceback.format_exc())
+
 
     def _create_control_window(self):
         """🆕 創建實驗者控制視窗"""
@@ -805,16 +976,47 @@ class WacomDrawingCanvas(QWidget):
         self.pen_is_touching = False
         self.current_pressure = 0.0
         
+        # 🆕🆕🆕 重置顏色為黑色
+        self.current_color = QColor('#000000')
+        self.current_color_name = '#000000'
+        self.logger.info("🎨 顏色已重置為黑色")
+        
         # 重置工具為筆
         self.current_tool = ToolType.PEN
-        self.pen_button.setStyleSheet("background-color: lightblue;")
-        self.eraser_button.setStyleSheet("")
+        
+        # 🔧 修復：保留 font-size
+        self.pen_button.setStyleSheet("""
+            QPushButton {
+                background-color: lightblue;
+                font-size: 40px;
+                border-radius: 10px;
+                border: 2px solid #2196F3;
+            }
+            QPushButton:hover {
+                background-color: #81D4FA;
+            }
+        """)
+        self.eraser_button.setStyleSheet("""
+            QPushButton {
+                background-color: white;
+                font-size: 40px;
+                border-radius: 10px;
+                border: 2px solid #cccccc;
+            }
+            QPushButton:hover {
+                background-color: #f0f0f0;
+            }
+        """)
+        
+        # 🆕🆕🆕 更新游標（使用黑色）
+        self._update_cursor()
         
         # 重繪畫布
         self.update()
         
         self.logger.info("✅ 畫布狀態已重置")
-        
+
+            
     def _reset_ink_system(self):
         """重置墨水系統"""
         try:
@@ -1010,20 +1212,64 @@ class WacomDrawingCanvas(QWidget):
             self.current_tool = tool_type
             
             if tool_type == ToolType.PEN:
-                self.pen_button.setStyleSheet("background-color: lightblue;")
-                self.eraser_button.setStyleSheet("")
+                # 🔧 修復：保留 font-size
+                self.pen_button.setStyleSheet("""
+                    QPushButton {
+                        background-color: lightblue;
+                        font-size: 40px;
+                        border-radius: 10px;
+                        border: 2px solid #2196F3;
+                    }
+                    QPushButton:hover {
+                        background-color: #81D4FA;
+                    }
+                """)
+                self.eraser_button.setStyleSheet("""
+                    QPushButton {
+                        background-color: white;
+                        font-size: 40px;
+                        border-radius: 10px;
+                        border: 2px solid #cccccc;
+                    }
+                    QPushButton:hover {
+                        background-color: #f0f0f0;
+                    }
+                """)
                 self.logger.info("✅ 切換到筆工具")
             else:
-                self.eraser_button.setStyleSheet("background-color: lightblue;")
-                self.pen_button.setStyleSheet("")
+                # 🔧 修復：保留 font-size
+                self.eraser_button.setStyleSheet("""
+                    QPushButton {
+                        background-color: lightblue;
+                        font-size: 40px;
+                        border-radius: 10px;
+                        border: 2px solid #2196F3;
+                    }
+                    QPushButton:hover {
+                        background-color: #81D4FA;
+                    }
+                """)
+                self.pen_button.setStyleSheet("""
+                    QPushButton {
+                        background-color: white;
+                        font-size: 40px;
+                        border-radius: 10px;
+                        border: 2px solid #cccccc;
+                    }
+                    QPushButton:hover {
+                        background-color: #f0f0f0;
+                    }
+                """)
                 self.logger.info("✅ 切換到橡皮擦")
+            
+            # 🆕🆕🆕 更新游標
+            self._update_cursor()
             
         except Exception as e:
             self.logger.error(f"❌ 切換工具失敗: {e}")
             import traceback
             self.logger.error(traceback.format_exc())
 
-    
     def _handle_pen_input(self, x_pixel, y_pixel, x_normalized, y_normalized, current_pressure, event):
         """處理筆輸入"""
         try:
@@ -1366,11 +1612,14 @@ class WacomDrawingCanvas(QWidget):
 
 
     def enterEvent(self, event):
-        """筆進入畫布區域時觸發"""
+        """筆進入畫布區域時觸發（副螢幕）"""
         try:
             self.logger.info(f"🚪 筆進入畫布區域 (當前壓力: {self.current_pressure:.3f})")
             
             self.pen_is_in_canvas = True
+            
+            # 🆕🆕🆕 進入副螢幕時顯示自定義游標
+            self._update_cursor()
             
             if self.current_stroke_points and self.last_point_data is not None:
                 current_time = self.lsl.stream_manager.get_stream_time()
@@ -1389,12 +1638,17 @@ class WacomDrawingCanvas(QWidget):
             import traceback
             self.logger.error(traceback.format_exc())
 
+
     def leaveEvent(self, event):
-        """筆離開畫布區域時觸發"""
+        """筆離開畫布區域時觸發（回到主螢幕）"""
         try:
             self.logger.info(f"🚪 筆離開畫布區域 (當前壓力: {self.current_pressure:.3f})")
             
             self.pen_is_in_canvas = False
+            
+            # 🆕🆕🆕 離開副螢幕時恢復正常游標
+            self.setCursor(Qt.ArrowCursor)
+            self.logger.debug("🖱️ 游標已恢復為箭頭（離開畫布）")
             
             self._force_end_current_stroke()
             
@@ -1404,6 +1658,7 @@ class WacomDrawingCanvas(QWidget):
             self.logger.error(f"❌ leaveEvent 處理失敗: {e}")
             import traceback
             self.logger.error(traceback.format_exc())
+
 
     def _force_end_current_stroke(self):
         """強制結束當前筆劃"""
@@ -1480,11 +1735,13 @@ class WacomDrawingCanvas(QWidget):
             x_pixel = event.x()
             y_pixel = event.y()
             
-            toolbar_height = 50
+            # 🆕🆕🆕 修改：工具欄在左側
+            toolbar_width = 120  # 工具欄寬度
             canvas_width = self.config.canvas_width
             canvas_height = self.config.canvas_height
             
-            if y_pixel < toolbar_height:
+            # 🆕🆕🆕 檢查是否在工具欄區域（左側 120 像素）
+            if x_pixel < toolbar_width:
                 self.logger.debug(f"⏭️ 點在工具欄區域，跳過墨水處理: ({x_pixel}, {y_pixel})")
                 
                 if self.pen_is_touching or self.current_stroke_points:
@@ -1494,15 +1751,17 @@ class WacomDrawingCanvas(QWidget):
                 event.accept()
                 return
             
-            adjusted_y = y_pixel - toolbar_height
+            # 🆕🆕🆕 調整座標（減去工具欄寬度）
+            adjusted_x = x_pixel - toolbar_width
             
-            x_normalized = x_pixel / canvas_width
-            y_normalized = adjusted_y / canvas_height
+            # 🆕🆕🆕 歸一化座標
+            x_normalized = adjusted_x / canvas_width
+            y_normalized = y_pixel / canvas_height
             
             if self.current_tool == ToolType.PEN:
-                self._handle_pen_input(x_pixel, adjusted_y, x_normalized, y_normalized, current_pressure, event)
+                self._handle_pen_input(adjusted_x, y_pixel, x_normalized, y_normalized, current_pressure, event)
             elif self.current_tool == ToolType.ERASER:
-                self._handle_eraser_input(x_pixel, adjusted_y, current_pressure, event)
+                self._handle_eraser_input(adjusted_x, y_pixel, current_pressure, event)
             
             # 🆕🆕🆕 橡皮擦模式下不在這裡觸發 update()（由 _handle_eraser_input 控制）
             if self.current_tool != ToolType.ERASER:
@@ -1517,16 +1776,17 @@ class WacomDrawingCanvas(QWidget):
             event.accept()
 
     def paintEvent(self, event):
-        """繪製筆劃（優化版：雙緩衝 + 分離橡皮擦 + 顏色支援）"""
+        """繪製筆劃（優化版：調整左側工具欄偏移）"""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         
-        toolbar_height = 50
-        painter.translate(0, toolbar_height)
+        # 🆕🆕🆕 修改：左側工具欄偏移（從 toolbar_height 改為 toolbar_width）
+        toolbar_width = 120  # 工具欄寬度
+        painter.translate(toolbar_width, 0)  # 向右偏移 120 像素
         
         # 🆕🆕🆕 優化 1：只繪製可見區域的筆劃
         visible_rect = event.rect()
-        visible_rect.translate(0, -toolbar_height)  # 調整工具欄偏移
+        visible_rect.translate(-toolbar_width, 0)  # 🆕 調整工具欄偏移
         
         # 🆕🆕🆕 優化 2：預先過濾未刪除的筆劃（提前定義，避免後續未定義錯誤）
         active_strokes = [s for s in self.all_strokes if not s.get('is_deleted', False)]

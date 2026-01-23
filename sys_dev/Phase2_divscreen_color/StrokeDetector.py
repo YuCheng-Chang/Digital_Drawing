@@ -1,4 +1,4 @@
-# ===== StrokeDetector.py =====
+# StrokeDetector.py
 import math
 import numpy as np
 from typing import List, Optional, Tuple, Dict, Any
