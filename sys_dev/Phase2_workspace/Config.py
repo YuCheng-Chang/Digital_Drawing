@@ -1,10 +1,304 @@
-"""
-Config.py - 數位墨水處理系統配置模組
-"""
-
-from dataclasses import dataclass
-from typing import List, Optional, Dict, Any
+# Config.py
+import logging
 from enum import Enum
+from dataclasses import dataclass, field
+from typing import List, Dict, Optional, Any
+import json
+from pathlib import Path
+
+class ColorPickerMode(Enum):
+    """顏色選擇器模式"""
+    DISABLED = "disabled"           # 禁用（單色黑色）
+    PALETTE_24 = "palette_24"       # 24 色調色盤
+    FULL_SPECTRUM = "full_spectrum" # 完整色譜
+
+@dataclass
+class ToolbarConfig:
+    """工具欄配置"""
+    pen_enabled: bool = True
+    eraser_enabled: bool = True
+    color_picker_enabled: bool = False
+    color_picker_mode: ColorPickerMode = ColorPickerMode.DISABLED
+    color_palette: List[str] = field(default_factory=lambda: [
+        "#000000", "#FFFFFF", "#FF0000", "#00FF00", "#0000FF", "#FFFF00",
+        "#FF00FF", "#00FFFF", "#800000", "#008000", "#000080", "#808000",
+        "#800080", "#008080", "#C0C0C0", "#808080", "#FFA500", "#FFC0CB",
+        "#A52A2A", "#FFD700", "#4B0082", "#EE82EE", "#F5DEB3", "#D2691E"
+    ])
+    allow_custom_color: bool = False
+    undo_enabled: bool = False
+    clear_canvas_enabled: bool = False
+
+@dataclass
+class DrawingConstraints:
+    """繪畫限制"""
+    time_limit_enabled: bool = False
+    time_limit_seconds: int = 300
+    stroke_limit_enabled: bool = False
+    stroke_limit_count: int = 100
+
+@dataclass
+class InstructionConfig:
+    """指導語配置"""
+    show_instruction_dialog: bool = True
+    instruction_text: str = ""
+    instruction_duration: int = 0  # 0 表示需手動關閉
+
+@dataclass
+class DrawingTestConfig:
+    """單個繪畫測試配置"""
+    drawing_type: str  # "DAP", "HTP", "FD", "pretest"
+    display_name: str
+    enabled: bool = True
+    order: int = 1
+    toolbar: ToolbarConfig = field(default_factory=ToolbarConfig)
+    constraints: DrawingConstraints = field(default_factory=DrawingConstraints)
+    instructions: InstructionConfig = field(default_factory=InstructionConfig)
+
+@dataclass
+class WorkspaceConfig:
+    """Workspace 配置"""
+    # 專案資訊
+    project_name: str = "預設專案"
+    project_id: str = "default"
+    version: str = "1.0"
+    description: str = ""
+    
+    # 繪畫測試序列
+    drawing_sequence: List[DrawingTestConfig] = field(default_factory=list)
+    
+    # 全域設定
+    canvas_background_color: str = "#FFFFFF"
+    default_pen_width: float = 2.0
+    eraser_radius: float = 10.0
+    enable_pressure_sensitivity: bool = True
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """轉換為字典"""
+        return {
+            'project_info': {
+                'project_name': self.project_name,
+                'project_id': self.project_id,
+                'version': self.version,
+                'description': self.description
+            },
+            'drawing_sequence': [
+                {
+                    'drawing_type': test.drawing_type,
+                    'display_name': test.display_name,
+                    'enabled': test.enabled,
+                    'order': test.order,
+                    'toolbar': {
+                        'pen_enabled': test.toolbar.pen_enabled,
+                        'eraser_enabled': test.toolbar.eraser_enabled,
+                        'color_picker_enabled': test.toolbar.color_picker_enabled,
+                        'color_picker_mode': test.toolbar.color_picker_mode.value,
+                        'color_palette': test.toolbar.color_palette,
+                        'allow_custom_color': test.toolbar.allow_custom_color,
+                        'undo_enabled': test.toolbar.undo_enabled,
+                        'clear_canvas_enabled': test.toolbar.clear_canvas_enabled
+                    },
+                    'constraints': {
+                        'time_limit_enabled': test.constraints.time_limit_enabled,
+                        'time_limit_seconds': test.constraints.time_limit_seconds,
+                        'stroke_limit_enabled': test.constraints.stroke_limit_enabled,
+                        'stroke_limit_count': test.constraints.stroke_limit_count
+                    },
+                    'instructions': {
+                        'show_instruction_dialog': test.instructions.show_instruction_dialog,
+                        'instruction_text': test.instructions.instruction_text,
+                        'instruction_duration': test.instructions.instruction_duration
+                    }
+                }
+                for test in self.drawing_sequence
+            ],
+            'global_settings': {
+                'canvas_background_color': self.canvas_background_color,
+                'default_pen_width': self.default_pen_width,
+                'eraser_radius': self.eraser_radius,
+                'enable_pressure_sensitivity': self.enable_pressure_sensitivity
+            }
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'WorkspaceConfig':
+        """從字典創建"""
+        project_info = data.get('project_info', {})
+        global_settings = data.get('global_settings', {})
+        
+        workspace = cls(
+            project_name=project_info.get('project_name', '預設專案'),
+            project_id=project_info.get('project_id', 'default'),
+            version=project_info.get('version', '1.0'),
+            description=project_info.get('description', ''),
+            canvas_background_color=global_settings.get('canvas_background_color', '#FFFFFF'),
+            default_pen_width=global_settings.get('default_pen_width', 2.0),
+            eraser_radius=global_settings.get('eraser_radius', 10.0),
+            enable_pressure_sensitivity=global_settings.get('enable_pressure_sensitivity', True)
+        )
+        
+        # 解析繪畫測試序列
+        for test_data in data.get('drawing_sequence', []):
+            toolbar_data = test_data.get('toolbar', {})
+            constraints_data = test_data.get('constraints', {})
+            instructions_data = test_data.get('instructions', {})
+            
+            test = DrawingTestConfig(
+                drawing_type=test_data['drawing_type'],
+                display_name=test_data['display_name'],
+                enabled=test_data.get('enabled', True),
+                order=test_data.get('order', 1),
+                toolbar=ToolbarConfig(
+                    pen_enabled=toolbar_data.get('pen_enabled', True),
+                    eraser_enabled=toolbar_data.get('eraser_enabled', True),
+                    color_picker_enabled=toolbar_data.get('color_picker_enabled', False),
+                    color_picker_mode=ColorPickerMode(toolbar_data.get('color_picker_mode', 'disabled')),
+                    color_palette=toolbar_data.get('color_palette', []),
+                    allow_custom_color=toolbar_data.get('allow_custom_color', False),
+                    undo_enabled=toolbar_data.get('undo_enabled', False),
+                    clear_canvas_enabled=toolbar_data.get('clear_canvas_enabled', False)
+                ),
+                constraints=DrawingConstraints(
+                    time_limit_enabled=constraints_data.get('time_limit_enabled', False),
+                    time_limit_seconds=constraints_data.get('time_limit_seconds', 300),
+                    stroke_limit_enabled=constraints_data.get('stroke_limit_enabled', False),
+                    stroke_limit_count=constraints_data.get('stroke_limit_count', 100)
+                ),
+                instructions=InstructionConfig(
+                    show_instruction_dialog=instructions_data.get('show_instruction_dialog', True),
+                    instruction_text=instructions_data.get('instruction_text', ''),
+                    instruction_duration=instructions_data.get('instruction_duration', 0)
+                )
+            )
+            workspace.drawing_sequence.append(test)
+        
+        return workspace
+    
+    def save_to_file(self, filepath: str):
+        """儲存到檔案"""
+        Path(filepath).parent.mkdir(parents=True, exist_ok=True)
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(self.to_dict(), f, indent=2, ensure_ascii=False)
+    
+    @classmethod
+    def load_from_file(cls, filepath: str) -> 'WorkspaceConfig':
+        """從檔案載入"""
+        with open(filepath, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        return cls.from_dict(data)
+
+# ============ 預設 Workspace 配置 ============
+
+def get_default_workspace() -> WorkspaceConfig:
+    """獲取預設 Workspace 配置"""
+    workspace = WorkspaceConfig(
+        project_name="標準臨床測試",
+        project_id="default_clinical",
+        version="1.0",
+        description="包含 pretest、DAP、HTP、FD 的標準測試流程"
+    )
+    
+    # 1. pretest（練習測試）- 完整功能
+    workspace.drawing_sequence.append(DrawingTestConfig(
+        drawing_type="pretest",
+        display_name="練習測試 (Practice)",
+        enabled=True,
+        order=1,
+        toolbar=ToolbarConfig(
+            pen_enabled=True,
+            eraser_enabled=True,
+            color_picker_enabled=True,
+            color_picker_mode=ColorPickerMode.PALETTE_24,
+            allow_custom_color=False,
+            undo_enabled=True,
+            clear_canvas_enabled=True
+        ),
+        instructions=InstructionConfig(
+            show_instruction_dialog=True,
+            instruction_text="這是練習階段，請熟悉工具的使用。",
+            instruction_duration=0
+        )
+    ))
+    
+    # 2. DAP（畫人測驗）- 單色黑色
+    workspace.drawing_sequence.append(DrawingTestConfig(
+        drawing_type="DAP",
+        display_name="畫人測驗 (Draw-a-Person)",
+        enabled=True,
+        order=2,
+        toolbar=ToolbarConfig(
+            pen_enabled=True,
+            eraser_enabled=True,
+            color_picker_enabled=False,
+            color_picker_mode=ColorPickerMode.DISABLED
+        ),
+        instructions=InstructionConfig(
+            show_instruction_dialog=True,
+            instruction_text="請畫一個完整的人。",
+            instruction_duration=0
+        )
+    ))
+    
+    # 3. HTP（房樹人測驗）- 單色黑色
+    workspace.drawing_sequence.append(DrawingTestConfig(
+        drawing_type="HTP",
+        display_name="房樹人測驗 (House-Tree-Person)",
+        enabled=True,
+        order=3,
+        toolbar=ToolbarConfig(
+            pen_enabled=True,
+            eraser_enabled=True,
+            color_picker_enabled=False,
+            color_picker_mode=ColorPickerMode.DISABLED
+        ),
+        instructions=InstructionConfig(
+            show_instruction_dialog=True,
+            instruction_text="請畫一棟房子、一棵樹和一個人。",
+            instruction_duration=0
+        )
+    ))
+    
+    # 4. FD（自由繪畫）- 24 色調色盤
+    workspace.drawing_sequence.append(DrawingTestConfig(
+        drawing_type="FD",
+        display_name="自由繪畫 (Free Drawing)",
+        enabled=True,
+        order=4,
+        toolbar=ToolbarConfig(
+            pen_enabled=True,
+            eraser_enabled=True,
+            color_picker_enabled=True,
+            color_picker_mode=ColorPickerMode.PALETTE_24,
+            allow_custom_color=False
+        ),
+        instructions=InstructionConfig(
+            show_instruction_dialog=True,
+            instruction_text="請自由繪畫，可以使用不同顏色。",
+            instruction_duration=0
+        )
+    ))
+    
+    return workspace
+
+# ============ Workspace 管理函數 ============
+
+def create_workspaces_directory():
+    """創建 workspaces 目錄並保存預設配置"""
+    workspace_dir = Path("./workspaces")
+    workspace_dir.mkdir(exist_ok=True)
+    
+    # 保存預設配置
+    default_workspace = get_default_workspace()
+    default_workspace.save_to_file("./workspaces/default.workspace.json")
+    
+    return workspace_dir
+
+# ============ 在模組載入時創建預設 Workspace ============
+try:
+    create_workspaces_directory()
+except Exception as e:
+    logging.warning(f"Failed to create default workspace: {e}")
+
 
 class DeviceType(Enum):
     """設備類型枚舉"""

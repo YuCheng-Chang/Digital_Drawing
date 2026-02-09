@@ -1,5 +1,5 @@
 # main.py
-from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QHBoxLayout, QVBoxLayout, QMessageBox, QDesktopWidget, QLabel,QColorDialog
+from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QHBoxLayout, QVBoxLayout, QMessageBox, QDesktopWidget, QLabel,QColorDialog, QDialog
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPainter, QPen, QColor, QTabletEvent,QPixmap, QCursor, QBrush
 import sys
@@ -7,11 +7,11 @@ import time
 from datetime import datetime
 import logging
 from InkProcessingSystemMainController import InkProcessingSystem
-from Config import ProcessingConfig
 from DigitalInkDataStructure import ToolType, StrokeMetadata 
 from EraserTool import EraserTool
 import os
-from SubjectInfoDialog import SubjectInfoDialog, DrawingTypeDialog
+from Config import ProcessingConfig, WorkspaceConfig, get_default_workspace, ColorPickerMode
+from SubjectInfoDialog import SubjectInfoDialog, DrawingTypeDialog, WorkspaceSelectionDialog
 
 # 配置日誌
 logging.basicConfig(
@@ -183,13 +183,19 @@ class ExperimenterControlWindow(QWidget):
         event.accept()
 
 class WacomDrawingCanvas(QWidget):
-    def __init__(self, ink_system, config: ProcessingConfig):
+    def __init__(self, ink_system, config: ProcessingConfig, workspace: WorkspaceConfig = None):
         super().__init__()
         self.ink_system = ink_system
         self.config = config
         
         # 🔧 修復：先初始化 logger
         self.logger = logging.getLogger('WacomDrawingCanvas')
+        
+        # 🆕🆕🆕 Workspace 配置
+        if workspace is None:
+            workspace = get_default_workspace()
+        self.workspace = workspace
+        self.current_test_config = None  # 當前測試配置
         
         # 🆕 顏色相關屬性
         self.current_color = QColor('#000000')  # 使用 hex code 創建
@@ -484,7 +490,7 @@ class WacomDrawingCanvas(QWidget):
     
     def get_drawing_type(self):
         """獲取繪畫類型（根據模式決定對話框位置）"""
-        dialog = DrawingTypeDialog(self.drawing_counter, self)
+        dialog = DrawingTypeDialog(self.drawing_counter, self.workspace, self)  # 🆕 添加 workspace 參數
         
         if self.is_extended_mode:
             # 🆕 延伸模式：將對話框移動到主螢幕中央
@@ -500,7 +506,16 @@ class WacomDrawingCanvas(QWidget):
         
         if dialog.exec_() == dialog.Accepted:
             self.current_drawing_info = dialog.drawing_info
+            
+            # 🆕🆕🆕 根據 drawing_type 獲取對應的測試配置
+            drawing_type = self.current_drawing_info['drawing_type']
+            for test in self.workspace.drawing_sequence:
+                if test.drawing_type == drawing_type:
+                    self.current_test_config = test
+                    break
+            
             self.logger.info(f"✅ 繪畫資訊: {self.current_drawing_info}")
+            self.logger.info(f"✅ 測試配置: {self.current_test_config.display_name}")
             return True
         return False
     
@@ -565,7 +580,8 @@ class WacomDrawingCanvas(QWidget):
             next_drawing_counter = self.drawing_counter + 1
             
             # 2. 先獲取新的繪畫類型（不終止當前繪畫）
-            dialog = DrawingTypeDialog(next_drawing_counter, self)
+            # ✅ 修正：添加 self.workspace 參數
+            dialog = DrawingTypeDialog(next_drawing_counter, self.workspace, self)
             
             if self.is_extended_mode:
                 # 延伸模式：將對話框移動到主螢幕中央
@@ -593,7 +609,16 @@ class WacomDrawingCanvas(QWidget):
             # 6. 更新繪畫計數器和資訊
             self.drawing_counter = next_drawing_counter
             self.current_drawing_info = dialog.drawing_info
+            
+            # 🆕🆕🆕 根據 drawing_type 獲取對應的測試配置
+            drawing_type = self.current_drawing_info['drawing_type']
+            for test in self.workspace.drawing_sequence:
+                if test.drawing_type == drawing_type:
+                    self.current_test_config = test
+                    break
+            
             self.logger.info(f"✅ 新繪畫資訊: {self.current_drawing_info}")
+            self.logger.info(f"✅ 測試配置: {self.current_test_config.display_name}")
             
             # 7. 更新視窗標題
             self._update_window_title()
@@ -612,8 +637,6 @@ class WacomDrawingCanvas(QWidget):
                     
             self.logger.info(f"✅ 新繪畫已開始 (繪畫編號: {self.drawing_counter})")
             
-
-            
             # 🆕🆕🆕 更新控制視窗資訊
             if self.control_window:
                 subject_id = self.subject_info.get('subject_id', 'N/A')
@@ -627,8 +650,7 @@ class WacomDrawingCanvas(QWidget):
             self.logger.error(traceback.format_exc())
             QMessageBox.critical(self, "錯誤", f"開始新繪畫失敗: {e}")
 
-
-    
+        
     def _setup_logging_to_file(self, session_id: str, output_dir: str):
         """設置日誌輸出到文件"""
         try:
@@ -820,35 +842,24 @@ class WacomDrawingCanvas(QWidget):
 
 
     def _update_color_button_visibility(self):
-        """🆕 根據繪畫類型更新顏色按鈕可見性（支援 pretest 和 FD）"""
-        if self.current_drawing_info:
-            drawing_type = self.current_drawing_info.get('drawing_type', '')
-            
-            # 🔧 修復：pretest 和 FD 都顯示顏色按鈕
-            if drawing_type in ['FD', 'pretest']:
-                self.color_button.show()
-                
-                # ✅ 使用統一方法更新按鈕樣式
-                self._update_color_button_style()
-                
-                self.logger.info(f"✅ 顏色按鈕已顯示（{drawing_type}），當前顏色: {self.current_color_name}")
-            else:
-                self.color_button.hide()
-                
-                # 重置為黑色（但不更新按鈕樣式，因為已隱藏）
-                self.current_color = QColor('#000000')
-                self.current_color_name = '#000000'
-                
-                self.logger.info(f"⚠️ 顏色按鈕已隱藏（{drawing_type}），顏色已重置為黑色")
-        else:
-            # 如果沒有繪畫資訊，隱藏顏色按鈕
+        """🆕 根據測試配置更新顏色按鈕可見性"""
+        if self.current_test_config is None:
             self.color_button.hide()
-            
-            # 重置為黑色
             self.current_color = QColor('#000000')
             self.current_color_name = '#000000'
-            
-            self.logger.info("⚠️ 顏色按鈕已隱藏（無繪畫資訊），顏色已重置為黑色")
+            return
+        
+        # 🆕 根據 Workspace 配置決定是否顯示
+        if self.current_test_config.toolbar.color_picker_enabled:
+            self.color_button.show()
+            self._update_color_button_style()
+            self.logger.info(f"✅ 顏色按鈕已顯示（{self.current_test_config.drawing_type}）")
+        else:
+            self.color_button.hide()
+            self.current_color = QColor('#000000')
+            self.current_color_name = '#000000'
+            self.logger.info(f"⚠️ 顏色按鈕已隱藏（{self.current_test_config.drawing_type}）")
+
 
 
     def _update_color_button_style(self):
@@ -867,7 +878,7 @@ class WacomDrawingCanvas(QWidget):
         self.logger.debug(f"🎨 顏色按鈕樣式已更新: {self.current_color_name}")
 
     def choose_color(self):
-        """選擇顏色"""
+        """選擇顏色（支援 24 色調色盤）"""
         
         try:
             # 強制完成當前筆劃
@@ -900,10 +911,15 @@ class WacomDrawingCanvas(QWidget):
             # 記錄切換前的顏色
             old_color = self.current_color_name
             
-            # 打開顏色選擇對話框
-            color = QColorDialog.getColor(self.current_color, self, "選擇畫筆顏色")
+            # 🆕🆕🆕 根據配置選擇顏色選擇器類型
+            if self.current_test_config.toolbar.color_picker_mode == ColorPickerMode.PALETTE_24:
+                # 使用 24 色調色盤
+                color = self._show_palette_color_picker()
+            else:
+                # 使用完整色譜
+                color = QColorDialog.getColor(self.current_color, self, "選擇畫筆顏色")
             
-            if color.isValid():
+            if color and color.isValid():
                 # 更新為 hex code
                 self.current_color = color
                 self.current_color_name = color.name()
@@ -925,6 +941,78 @@ class WacomDrawingCanvas(QWidget):
             self.logger.error(f"❌ 選擇顏色失敗: {e}")
             import traceback
             self.logger.error(traceback.format_exc())
+
+    def _show_palette_color_picker(self) -> QColor:
+        """🆕 顯示 24 色調色盤選擇器"""
+        from PyQt5.QtWidgets import QDialog, QGridLayout, QPushButton, QVBoxLayout, QLabel
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle("選擇顏色")
+        dialog.setModal(True)
+        
+        main_layout = QVBoxLayout()
+        
+        # 標題
+        title = QLabel("請選擇顏色:")
+        title.setStyleSheet("font-size: 20px; font-weight: bold;")
+        main_layout.addWidget(title)
+        
+        # 顏色網格
+        grid_layout = QGridLayout()
+        grid_layout.setSpacing(10)
+        
+        palette = self.current_test_config.toolbar.color_palette
+        selected_color = [None]  # 使用列表以便在閉包中修改
+        
+        def create_color_button(color_hex):
+            btn = QPushButton()
+            btn.setFixedSize(60, 60)
+            btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {color_hex};
+                    border: 2px solid #666666;
+                    border-radius: 5px;
+                }}
+                QPushButton:hover {{
+                    border: 3px solid #333333;
+                }}
+            """)
+            btn.clicked.connect(lambda: on_color_selected(color_hex))
+            return btn
+        
+        def on_color_selected(color_hex):
+            selected_color[0] = QColor(color_hex)
+            dialog.accept()
+        
+        # 排列為 6x4 網格
+        for i, color_hex in enumerate(palette[:24]):  # 確保只取 24 個
+            row = i // 6
+            col = i % 6
+            grid_layout.addWidget(create_color_button(color_hex), row, col)
+        
+        main_layout.addLayout(grid_layout)
+        
+        # 取消按鈕
+        cancel_btn = QPushButton("取消")
+        cancel_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #f44336;
+                color: white;
+                font-size: 18px;
+                min-height: 40px;
+                border-radius: 5px;
+            }
+        """)
+        cancel_btn.clicked.connect(dialog.reject)
+        main_layout.addWidget(cancel_btn)
+        
+        dialog.setLayout(main_layout)
+        
+        # 顯示對話框
+        if dialog.exec_() == QDialog.Accepted and selected_color[0]:
+            return selected_color[0]
+        else:
+            return QColor()  # 返回無效顏色
 
 
     def _create_control_window(self):
@@ -1931,7 +2019,6 @@ def test_wacom_with_full_system():
         return
     
     print("✅ 系統初始化成功")
-    
     def on_stroke_completed(data):
         """筆劃完成回調"""
         try:
@@ -2009,7 +2096,21 @@ def test_wacom_with_full_system():
     print("✅ 處理已啟動（外部輸入模式）")
 
     app = QApplication(sys.argv)
-    canvas = WacomDrawingCanvas(ink_system, config)
+    
+    # 🆕🆕🆕 先選擇 Workspace
+    workspace_dialog = WorkspaceSelectionDialog()
+    
+    # ✅ 修正：處理取消情況
+    if workspace_dialog.exec_() != QDialog.Accepted:
+        print("❌ 用戶取消選擇 Workspace，程式結束")
+        ink_system.stop_processing()  # ✅ 停止墨水系統
+        return  # ✅ 直接返回，不啟動 app.exec_()
+    
+    workspace = workspace_dialog.selected_workspace
+    print(f"✅ 已載入 Workspace: {workspace.project_name}")
+    
+    # 🆕🆕🆕 傳遞 workspace 到 canvas
+    canvas = WacomDrawingCanvas(ink_system, config, workspace)
 
     print("✅ LSL 時間源已設置")
 
@@ -2017,10 +2118,11 @@ def test_wacom_with_full_system():
 
     print("\n" + "=" * 60)
     print("🎨 使用說明:")
-    print("   1. 輸入受試者資訊後開始") 
-    print("   2. 選擇繪畫類型")
-    print("   3. 完成繪畫後點擊「新繪畫」按鈕開始下一個")
-    print("   4. 關閉視窗結束所有測試")
+    print("   1. 已載入 Workspace 配置") 
+    print("   2. 輸入受試者資訊")
+    print("   3. 選擇繪畫類型（根據 Workspace 配置）")
+    print("   4. 完成繪畫後點擊「新繪畫」按鈕")
+    print("   5. 關閉視窗結束所有測試")
     print("=" * 60 + "\n")
     
     try:
