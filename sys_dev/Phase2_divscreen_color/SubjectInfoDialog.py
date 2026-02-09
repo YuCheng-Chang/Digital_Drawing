@@ -7,13 +7,43 @@ from datetime import datetime
 
 
 class SubjectInfoDialog(QDialog):
-    """受試者資訊輸入對話框"""
+    """受試者資訊輸入對話框 (放大版)"""
     
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("受試者資訊")
         self.setModal(True)
-        self.setFixedSize(400, 200)
+        # 🆕 修改：加大視窗尺寸 (原 400x200 -> 600x400)
+        self.setFixedSize(600, 400)
+        
+        # 🆕 新增：全域樣式表，統一放大字體和元件高度
+        self.setStyleSheet("""
+            QLabel {
+                font-size: 20px;
+                font-weight: bold;
+            }
+            QLineEdit {
+                font-size: 20px;
+                padding: 5px;
+                min-height: 40px;
+            }
+            QDateEdit {
+                font-size: 20px;
+                padding: 5px;
+                min-height: 40px;
+            }
+            QComboBox {
+                font-size: 20px;
+                padding: 5px;
+                min-height: 40px;
+            }
+            QPushButton {
+                font-size: 20px;
+                font-weight: bold;
+                min-height: 50px;
+                border-radius: 5px;
+            }
+        """)
         
         # 存儲結果
         self.subject_info = None
@@ -23,6 +53,8 @@ class SubjectInfoDialog(QDialog):
     
     def setup_ui(self):
         layout = QFormLayout()
+        layout.setSpacing(20)       # 增加行距
+        layout.setContentsMargins(20, 20, 20, 20)
         
         # 受試者編號
         self.subject_id_edit = QLineEdit()
@@ -43,6 +75,7 @@ class SubjectInfoDialog(QDialog):
         
         # 按鈕
         button_layout = QHBoxLayout()
+        button_layout.setSpacing(20)
         
         self.ok_button = QPushButton("確定")
         self.ok_button.clicked.connect(self.accept_input)
@@ -56,6 +89,7 @@ class SubjectInfoDialog(QDialog):
         # 主佈局
         main_layout = QVBoxLayout()
         main_layout.addLayout(layout)
+        main_layout.addSpacing(20) # 增加佈局間距
         main_layout.addLayout(button_layout)
         
         self.setLayout(main_layout)
@@ -81,13 +115,35 @@ class SubjectInfoDialog(QDialog):
 
 
 class DrawingTypeDialog(QDialog):
-    """繪畫類型選擇對話框"""
+    """繪畫類型選擇對話框 (放大版)"""
     
     def __init__(self, drawing_counter: int, parent=None):
         super().__init__(parent)
         self.setWindowTitle("選擇繪畫類型")
         self.setModal(True)
-        self.setFixedSize(350, 200)  # 🔧 稍微加高以容納新選項
+        # 🆕 修改：加大視窗尺寸 (原 350x200 -> 550x350)
+        self.setFixedSize(550, 350)
+        
+        # 🆕 新增：全域樣式表
+        self.setStyleSheet("""
+            QLabel {
+                font-size: 22px;
+            }
+            QComboBox {
+                font-size: 20px;
+                padding: 5px;
+                min-height: 50px; /* 加高下拉選單 */
+            }
+            QComboBox QAbstractItemView {
+                font-size: 20px; /* 加大下拉選單內的選項字體 */
+            }
+            QPushButton {
+                font-size: 20px;
+                font-weight: bold;
+                min-height: 60px; /* 加高按鈕 */
+                border-radius: 8px;
+            }
+        """)
         
         # 存儲結果
         self.drawing_info = None
@@ -98,16 +154,19 @@ class DrawingTypeDialog(QDialog):
     
     def setup_ui(self):
         layout = QFormLayout()
+        layout.setSpacing(25)
+        layout.setContentsMargins(30, 30, 30, 30)
         
         # 顯示繪畫編號
         self.drawing_id_label = QLabel(f"繪畫編號: {self.drawing_counter}")
-        self.drawing_id_label.setStyleSheet("font-weight: bold; color: #2196F3;")
+        # 這裡單獨設定顏色和粗體，字體大小由上面的 StyleSheet 控制
+        self.drawing_id_label.setStyleSheet("font-weight: bold; color: #2196F3; font-size: 28px;") 
         layout.addRow(self.drawing_id_label)
         
         # 🆕 繪畫類型（添加 pretest）
         self.drawing_type_combo = QComboBox()
         self.drawing_type_combo.addItems([
-            "pretest (練習測試)",  # 🆕 新增選項
+            "pretest (練習測試)",
             "DAP (Draw-a-Person Test)",
             "HTP (House-Tree-Person Test)", 
             "FD (Free-Drawing Test)"
@@ -116,11 +175,14 @@ class DrawingTypeDialog(QDialog):
         
         # 按鈕
         button_layout = QHBoxLayout()
+        button_layout.setSpacing(20)
         
         self.ok_button = QPushButton("開始繪畫")
+        self.ok_button.setStyleSheet("background-color: #4CAF50; color: white;") # 綠色確認按鈕
         self.ok_button.clicked.connect(self.accept_input)
         
         self.cancel_button = QPushButton("取消")
+        self.cancel_button.setStyleSheet("background-color: #f44336; color: white;") # 紅色取消按鈕
         self.cancel_button.clicked.connect(self.reject)
         
         button_layout.addWidget(self.ok_button)
@@ -129,6 +191,7 @@ class DrawingTypeDialog(QDialog):
         # 主佈局
         main_layout = QVBoxLayout()
         main_layout.addLayout(layout)
+        main_layout.addStretch() # 增加彈性空間
         main_layout.addLayout(button_layout)
         
         self.setLayout(main_layout)

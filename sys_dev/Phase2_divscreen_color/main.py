@@ -19,6 +19,8 @@ logging.basicConfig(
   format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
+# main.py (部分修改)
+
 class ExperimenterControlWindow(QWidget):
     """實驗者控制視窗（顯示在主螢幕）"""
     
@@ -33,77 +35,87 @@ class ExperimenterControlWindow(QWidget):
         self._setup_window_position()
     
     def _setup_ui(self):
-        """設置 UI"""
+        """設置 UI (放大版)"""
         self.setWindowTitle("實驗者控制面板")
-        self.setFixedSize(400, 230)  # 🆕 增加高度以容納繪畫編號
+        # 🆕 修改：加大視窗尺寸 (原 400x230 -> 600x400)
+        self.setFixedSize(600, 400)
         
         # 主佈局
         main_layout = QVBoxLayout()
-        main_layout.setSpacing(15)
-        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setSpacing(25)  # 增加間距
+        main_layout.setContentsMargins(30, 30, 30, 30)  # 增加邊距
         
         # === 資訊顯示區域 ===
         info_layout = QVBoxLayout()
+        info_layout.setSpacing(15) # 資訊標籤間距
+        
+        # 🆕 修改：統一加大字體樣式
+        label_style = "font-size: 24px; font-weight: bold;"
+        value_style = "font-size: 24px; font-weight: bold; color: #2196F3;"
         
         # 受試者編號標籤
         self.subject_label = QLabel("受試者編號: N/A")
-        self.subject_label.setStyleSheet("font-size: 14px; font-weight: bold;")
+        self.subject_label.setStyleSheet(label_style)
         info_layout.addWidget(self.subject_label)
         
-        # 🆕🆕🆕 當前繪畫編號標籤
+        # 當前繪畫編號標籤
         self.drawing_number_label = QLabel("當前繪畫編號: N/A")
-        self.drawing_number_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #2196F3;")
+        self.drawing_number_label.setStyleSheet(value_style)
         info_layout.addWidget(self.drawing_number_label)
         
         # 當前繪畫類型標籤
         self.drawing_type_label = QLabel("當前繪畫類型: N/A")
-        self.drawing_type_label.setStyleSheet("font-size: 14px; font-weight: bold;")
+        self.drawing_type_label.setStyleSheet(label_style)
         info_layout.addWidget(self.drawing_type_label)
         
         main_layout.addLayout(info_layout)
         
         # 分隔線
         line = QWidget()
-        line.setFixedHeight(2)
+        line.setFixedHeight(4) # 加粗分隔線
         line.setStyleSheet("background-color: #cccccc;")
         main_layout.addWidget(line)
         
         # === 控制按鈕區域 ===
         button_layout = QHBoxLayout()
-        button_layout.setSpacing(10)
+        button_layout.setSpacing(20)
+        
+        # 🆕 修改：按鈕樣式 (高度 50->80, 字體 16->24)
+        btn_height = 80
+        btn_font_size = "24px"
         
         # 新繪畫按鈕
         self.new_drawing_button = QPushButton("➕ 新繪畫")
-        self.new_drawing_button.setFixedHeight(50)
-        self.new_drawing_button.setStyleSheet("""
-            QPushButton {
+        self.new_drawing_button.setFixedHeight(btn_height)
+        self.new_drawing_button.setStyleSheet(f"""
+            QPushButton {{
                 background-color: #4CAF50;
                 color: white;
-                font-size: 16px;
+                font-size: {btn_font_size};
                 font-weight: bold;
-                border-radius: 5px;
-            }
-            QPushButton:hover {
+                border-radius: 10px;
+            }}
+            QPushButton:hover {{
                 background-color: #45a049;
-            }
+            }}
         """)
         self.new_drawing_button.clicked.connect(self.on_new_drawing_clicked)
         button_layout.addWidget(self.new_drawing_button)
         
         # 關閉程式按鈕
         self.close_button = QPushButton("❌ 關閉程式")
-        self.close_button.setFixedHeight(50)
-        self.close_button.setStyleSheet("""
-            QPushButton {
+        self.close_button.setFixedHeight(btn_height)
+        self.close_button.setStyleSheet(f"""
+            QPushButton {{
                 background-color: #f44336;
                 color: white;
-                font-size: 16px;
+                font-size: {btn_font_size};
                 font-weight: bold;
-                border-radius: 5px;
-            }
-            QPushButton:hover {
+                border-radius: 10px;
+            }}
+            QPushButton:hover {{
                 background-color: #da190b;
-            }
+            }}
         """)
         self.close_button.clicked.connect(self.on_close_clicked)
         button_layout.addWidget(self.close_button)
@@ -111,6 +123,7 @@ class ExperimenterControlWindow(QWidget):
         main_layout.addLayout(button_layout)
         
         self.setLayout(main_layout)
+
 
     
     def _setup_window_position(self):
