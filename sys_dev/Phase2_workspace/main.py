@@ -182,83 +182,80 @@ class ExperimenterControlWindow(QWidget):
             self.canvas.close()
         event.accept()
 
+# main.py (WacomDrawingCanvas.__init__ 修改)
+
 class WacomDrawingCanvas(QWidget):
     def __init__(self, ink_system, config: ProcessingConfig, workspace: WorkspaceConfig = None):
         super().__init__()
         self.ink_system = ink_system
         self.config = config
         
-        # 🔧 修復：先初始化 logger
         self.logger = logging.getLogger('WacomDrawingCanvas')
         
-        # 🆕🆕🆕 Workspace 配置
         if workspace is None:
             workspace = get_default_workspace()
         self.workspace = workspace
-        self.current_test_config = None  # 當前測試配置
+        self.current_test_config = None
         
-        # 🆕 顏色相關屬性
-        self.current_color = QColor('#000000')  # 使用 hex code 創建
-        self.current_color_name = self.current_color.name()  # '#000000'
+        self.current_color = QColor('#000000')
+        self.current_color_name = self.current_color.name()
 
-        # 🆕 獲取螢幕資訊並判斷模式
         self.primary_screen, self.secondary_screen, self.is_extended_mode = self._detect_screens()
-        
-        # 🆕 根據螢幕模式更新配置
         self._setup_screen_size()
         
-        # 受試者和繪畫資訊
         self.subject_info = None
         self.current_drawing_info = None
         self.drawing_counter = 1
         
-        # 基本屬性
         self.current_stroke_points = []
         self.all_strokes = []
         self.stroke_count = 0
         self.total_points = 0
         
-        # 狀態追蹤
         self.last_point_data = None
         self.pen_is_in_canvas = False
         self.pen_is_touching = False
         self.current_pressure = 0.0
         
-        # 橡皮擦相關
         self.current_tool = ToolType.PEN
         self.eraser_tool = EraserTool(radius=10.0)
         self.current_eraser_points = []
         self.next_stroke_id = 0
         
-        # 🆕 首先獲取受試者資訊
+        # 🆕🆕🆕 修改：第一次取消則退出程式
         if not self.get_subject_info():
-            sys.exit()
+            self.logger.critical("❌ 第一次未輸入受試者資訊，程式退出")
+            # 🆕 停止墨水系統
+            if self.ink_system:
+                self.ink_system.stop_processing()
+                self.ink_system.shutdown()
+            # 🆕 退出應用（不顯示錯誤訊息）
+            QApplication.quit()
+            sys.exit(0)  # 🆕 確保終端機輸出停止
         
-        # 🆕 獲取第一次繪畫類型
+        # 🆕🆕🆕 修改：第一次取消則退出程式
         if not self.get_drawing_type():
-            sys.exit()
+            self.logger.critical("❌ 第一次未選擇繪畫類型，程式退出")
+            # 🆕 停止墨水系統
+            if self.ink_system:
+                self.ink_system.stop_processing()
+                self.ink_system.shutdown()
+            # 🆕 退出應用（不顯示錯誤訊息）
+            QApplication.quit()
+            sys.exit(0)  # 🆕 確保終端機輸出停止
         
-        # 🆕 設置視窗屬性
         self._setup_window()
-
-        # 🆕 更新視窗標題
         self._update_window_title()
-
-        # 設置工具欄
         self._setup_toolbar()
-
-        # 🆕🆕🆕 創建實驗者控制視窗
+        
         self.control_window = None
         self._create_control_window()
-
-        # 🆕🆕🆕 初始化自定義游標
         self._update_cursor()
         
         self.logger.info("✅ WacomDrawingCanvas 初始化完成")
-        # 初始化LSL
+        
         self._initialize_lsl()
         
-        # 註冊回調
         self.ink_system.register_callback(
             'on_point_processed',
             self._on_point_processed_callback
@@ -267,6 +264,7 @@ class WacomDrawingCanvas(QWidget):
             'on_stroke_completed',
             self._on_stroke_completed_callback
         )
+
 
     def _create_pen_cursor(self, color: QColor, size: int = 8) -> QCursor:
         """
@@ -458,7 +456,6 @@ class WacomDrawingCanvas(QWidget):
         dialog = SubjectInfoDialog(self)
         
         if self.is_extended_mode:
-            # 🆕 延伸模式：將對話框移動到主螢幕中央
             dialog_width = dialog.width()
             dialog_height = dialog.height()
             x = self.primary_screen.x() + (self.primary_screen.width() - dialog_width) // 2
@@ -466,14 +463,22 @@ class WacomDrawingCanvas(QWidget):
             dialog.move(x, y)
             self.logger.info(f"📋 受試者資訊對話框顯示在主螢幕: ({x}, {y})")
         else:
-            # 單螢幕模式：使用預設位置（螢幕中央）
             self.logger.info("📋 受試者資訊對話框顯示在螢幕中央（單螢幕模式）")
         
         if dialog.exec_() == dialog.Accepted:
             self.subject_info = dialog.subject_info
             self.logger.info(f"✅ 受試者資訊: {self.subject_info}")
+            
+            # 🆕🆕🆕 儲存 Workspace 配置說明檔到受試者根目錄
+            from SubjectInfoDialog import save_workspace_config_summary
+            base_output_dir = "./wacom_recordings"
+            subject_dir = os.path.join(base_output_dir, self.subject_info['folder_name'])
+            os.makedirs(subject_dir, exist_ok=True)
+            save_workspace_config_summary(self.workspace, subject_dir)
+            
             return True
         return False
+    
     
     def _update_window_title(self):
         """更新視窗標題以顯示當前繪畫類型"""
@@ -490,10 +495,9 @@ class WacomDrawingCanvas(QWidget):
     
     def get_drawing_type(self):
         """獲取繪畫類型（根據模式決定對話框位置）"""
-        dialog = DrawingTypeDialog(self.drawing_counter, self.workspace, self)  # 🆕 添加 workspace 參數
+        dialog = DrawingTypeDialog(self.drawing_counter, self.workspace, self)
         
         if self.is_extended_mode:
-            # 🆕 延伸模式：將對話框移動到主螢幕中央
             dialog_width = dialog.width()
             dialog_height = dialog.height()
             x = self.primary_screen.x() + (self.primary_screen.width() - dialog_width) // 2
@@ -501,13 +505,12 @@ class WacomDrawingCanvas(QWidget):
             dialog.move(x, y)
             self.logger.info(f"🎨 繪畫類型對話框顯示在主螢幕: ({x}, {y})")
         else:
-            # 單螢幕模式：使用預設位置（螢幕中央）
             self.logger.info("🎨 繪畫類型對話框顯示在螢幕中央（單螢幕模式）")
         
+        # 🆕🆕🆕 修復：如果取消，返回 False（不退出程式）
         if dialog.exec_() == dialog.Accepted:
             self.current_drawing_info = dialog.drawing_info
             
-            # 🆕🆕🆕 根據 drawing_type 獲取對應的測試配置
             drawing_type = self.current_drawing_info['drawing_type']
             for test in self.workspace.drawing_sequence:
                 if test.drawing_type == drawing_type:
@@ -517,10 +520,13 @@ class WacomDrawingCanvas(QWidget):
             self.logger.info(f"✅ 繪畫資訊: {self.current_drawing_info}")
             self.logger.info(f"✅ 測試配置: {self.current_test_config.display_name}")
             return True
-        return False
+        else:
+            # 🆕🆕🆕 用戶取消，返回 False（不退出程式）
+            self.logger.info("❌ 用戶取消選擇繪畫類型")
+            return False
     
     def _initialize_lsl(self):
-        """初始化LSL整合（使用新目錄結構）"""
+        """初始化LSL整合（使用新目錄結構 + 儲存配置到 metadata）"""
         from LSLIntegration import LSLIntegration, LSLStreamConfig
         
         canvas_width = self.config.canvas_width
@@ -534,12 +540,10 @@ class WacomDrawingCanvas(QWidget):
             screen_height=canvas_height
         )
         
-        # 🆕 使用新的目錄結構
         base_output_dir = "./wacom_recordings"
         subject_dir = os.path.join(base_output_dir, self.subject_info['folder_name'])
         drawing_dir = os.path.join(subject_dir, self.current_drawing_info['folder_name'])
         
-        # 確保目錄存在
         os.makedirs(drawing_dir, exist_ok=True)
         
         self.lsl = LSLIntegration(
@@ -547,9 +551,9 @@ class WacomDrawingCanvas(QWidget):
             output_dir=drawing_dir
         )
         
-        # 🆕 使用繪畫ID和類型作為session_id（格式：1_DAP）
         session_id = f"{self.current_drawing_info['drawing_id']}_{self.current_drawing_info['drawing_type']}"
         
+        # 🆕🆕🆕 添加測驗配置到 metadata
         self.lsl.start(
             session_id=session_id,
             metadata={
@@ -559,11 +563,28 @@ class WacomDrawingCanvas(QWidget):
                 'screen_resolution': f"{canvas_width}x{canvas_height}",
                 'canvas_width': canvas_width,
                 'canvas_height': canvas_height,
-                'display_mode': 'extended' if self.is_extended_mode else 'single'  # 🆕 記錄顯示模式
+                'display_mode': 'extended' if self.is_extended_mode else 'single',
+                # 🆕🆕🆕 添加測驗配置
+                'drawing_test_config': {
+                    'drawing_type': self.current_test_config.drawing_type,
+                    'display_name': self.current_test_config.display_name,
+                    'order': self.current_test_config.order,
+                    'enabled_tools': {
+                        'pen': self.current_test_config.toolbar.pen_enabled,
+                        'eraser': self.current_test_config.toolbar.eraser_enabled,
+                        'color_picker': self.current_test_config.toolbar.color_picker_enabled
+                    },
+                    'color_picker_mode': self.current_test_config.toolbar.color_picker_mode.value,
+                    'constraints': {
+                        'time_limit_enabled': self.current_test_config.constraints.time_limit_enabled,
+                        'time_limit_seconds': self.current_test_config.constraints.time_limit_seconds,
+                        'stroke_limit_enabled': self.current_test_config.constraints.stroke_limit_enabled,
+                        'stroke_limit_count': self.current_test_config.constraints.stroke_limit_count
+                    }
+                }
             }
         )
         
-        # 設置日誌到文件
         self._setup_logging_to_file(session_id, drawing_dir)
         
         self.ink_system.set_time_source(self.lsl.stream_manager.get_stream_time)
@@ -598,7 +619,7 @@ class WacomDrawingCanvas(QWidget):
             # 3. 只有當用戶點擊「確定」時才執行後續操作
             if dialog.exec_() != dialog.Accepted:
                 self.logger.info("❌ 用戶取消新繪畫，繼續當前繪畫")
-                return  # 用戶取消，直接返回，當前繪畫繼續
+                return  # ✅ 這裡只是返回，不退出程式
             
             # 4. 用戶確認，現在才開始終止當前繪畫
             self.logger.info("✅ 用戶確認新繪畫，開始終止當前繪畫")
@@ -1041,22 +1062,21 @@ class WacomDrawingCanvas(QWidget):
             self.logger.error(traceback.format_exc())
 
     def _finish_current_drawing(self):
-        """完成當前繪畫的保存工作"""
+        """完成當前繪畫的保存工作（🆕 添加配置到 metadata）"""
         try:
-            # 1. 強制完成未完成的筆劃
             self._force_complete_current_stroke()
-            
-            # 2. 輸出統計資訊
             self._output_drawing_statistics()
-            
-            # 3. 匯出畫布圖片
             self._export_current_canvas()
             
-            # 4. 停止並保存LSL數據
             if hasattr(self, 'lsl') and self.lsl is not None:
                 self.logger.info("🔚 保存當前繪畫數據...")
                 saved_files = self.lsl.stop()
                 self.logger.info(f"✅ 當前繪畫數據已保存: {saved_files}")
+                
+                # 🆕🆕🆕 將繪畫測驗配置添加到 metadata.json
+                if 'metadata' in saved_files:
+                    from SubjectInfoDialog import save_drawing_config_to_metadata
+                    save_drawing_config_to_metadata(saved_files['metadata'], self.current_test_config)
                 
         except Exception as e:
             self.logger.error(f"❌ 完成當前繪畫失敗: {e}")
@@ -2097,20 +2117,28 @@ def test_wacom_with_full_system():
 
     app = QApplication(sys.argv)
     
-    # 🆕🆕🆕 先選擇 Workspace
+    # 先選擇 Workspace
     workspace_dialog = WorkspaceSelectionDialog()
     
-    # ✅ 修正：處理取消情況
+    # 🆕🆕🆕 修復：處理取消情況，停止墨水系統並退出應用
     if workspace_dialog.exec_() != QDialog.Accepted:
         print("❌ 用戶取消選擇 Workspace，程式結束")
-        ink_system.stop_processing()  # ✅ 停止墨水系統
-        return  # ✅ 直接返回，不啟動 app.exec_()
+        ink_system.stop_processing()
+        ink_system.shutdown()
+        sys.exit(0)  # 🆕 確保終端機輸出停止
     
     workspace = workspace_dialog.selected_workspace
     print(f"✅ 已載入 Workspace: {workspace.project_name}")
     
-    # 🆕🆕🆕 傳遞 workspace 到 canvas
+    # 🆕🆕🆕 在受試者根目錄儲存 Workspace 配置說明檔
     canvas = WacomDrawingCanvas(ink_system, config, workspace)
+    
+    # 🆕🆕🆕 儲存 Workspace 配置說明檔到受試者根目錄
+    if canvas.subject_info:
+        from SubjectInfoDialog import save_workspace_config_summary
+        subject_dir = os.path.join("./wacom_recordings", canvas.subject_info['folder_name'])
+        os.makedirs(subject_dir, exist_ok=True)
+        save_workspace_config_summary(workspace, subject_dir)
 
     print("✅ LSL 時間源已設置")
 
@@ -2132,6 +2160,7 @@ def test_wacom_with_full_system():
     
     print("\n🛑 停止處理...")
     ink_system.stop_processing()
+    ink_system.shutdown()
     
     print("\n✅ 測試完成")
 
