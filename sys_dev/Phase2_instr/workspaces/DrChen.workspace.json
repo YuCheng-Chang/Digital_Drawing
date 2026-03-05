@@ -1,0 +1,276 @@
+{
+  "project_info": {
+    "project_name": "陳醫師",
+    "project_id": "DrChen",
+    "version": "1.0",
+    "description": "包含 pretest、DAP、PIR、HTP、FD 的標準測試流程"
+  },
+  "drawing_sequence": [
+    {
+      "drawing_type": "pretest",
+      "display_name": "練習測試 (Practice)",
+      "enabled": true,
+      "order": 1,
+      "toolbar": {
+        "pen_enabled": true,
+        "eraser_enabled": true,
+        "color_picker_enabled": true,
+        "color_picker_mode": "palette_24",
+        "color_palette": [
+          "#000000",
+          "#FFFFFF",
+          "#FF0000",
+          "#00FF00",
+          "#0000FF",
+          "#FFFF00",
+          "#FF00FF",
+          "#00FFFF",
+          "#800000",
+          "#008000",
+          "#000080",
+          "#808000",
+          "#800080",
+          "#008080",
+          "#C0C0C0",
+          "#808080",
+          "#FFA500",
+          "#FFC0CB",
+          "#A52A2A",
+          "#FFD700",
+          "#4B0082",
+          "#EE82EE",
+          "#F5DEB3",
+          "#D2691E"
+        ],
+        "allow_custom_color": false,
+        "undo_enabled": true,
+        "clear_canvas_enabled": true
+      },
+      "constraints": {
+        "time_limit_enabled": false,
+        "time_limit_seconds": 300,
+        "stroke_limit_enabled": false,
+        "stroke_limit_count": 100
+      },
+      "instructions": {
+        "show_instruction_dialog": true,
+        "instruction_text": "這是練習階段，請熟悉工具的使用。",
+        "instruction_duration": 0
+      }
+    },
+    {
+      "drawing_type": "DAP",
+      "display_name": "畫人測驗 (Draw-a-Person)",
+      "enabled": true,
+      "order": 2,
+      "toolbar": {
+        "pen_enabled": true,
+        "eraser_enabled": true,
+        "color_picker_enabled": false,
+        "color_picker_mode": "disabled",
+        "color_palette": [
+          "#000000",
+          "#FFFFFF",
+          "#FF0000",
+          "#00FF00",
+          "#0000FF",
+          "#FFFF00",
+          "#FF00FF",
+          "#00FFFF",
+          "#800000",
+          "#008000",
+          "#000080",
+          "#808000",
+          "#800080",
+          "#008080",
+          "#C0C0C0",
+          "#808080",
+          "#FFA500",
+          "#FFC0CB",
+          "#A52A2A",
+          "#FFD700",
+          "#4B0082",
+          "#EE82EE",
+          "#F5DEB3",
+          "#D2691E"
+        ],
+        "allow_custom_color": false,
+        "undo_enabled": false,
+        "clear_canvas_enabled": false
+      },
+      "constraints": {
+        "time_limit_enabled": false,
+        "time_limit_seconds": 300,
+        "stroke_limit_enabled": false,
+        "stroke_limit_count": 100
+      },
+      "instructions": {
+        "show_instruction_dialog": true,
+        "instruction_text": "請畫一個完整的人。",
+        "instruction_duration": 0
+      }
+    },
+    {
+      "drawing_type": "PIR",
+      "display_name": "人在雨中 (Person-In-the-Rain)",
+      "enabled": true,
+      "order": 3,
+      "toolbar": {
+        "pen_enabled": true,
+        "eraser_enabled": true,
+        "color_picker_enabled": true,
+        "color_picker_mode": "full_spectrum",
+        "color_palette": [
+          "#000000",
+          "#FFFFFF",
+          "#FF0000",
+          "#00FF00",
+          "#0000FF",
+          "#FFFF00",
+          "#FF00FF",
+          "#00FFFF",
+          "#800000",
+          "#008000",
+          "#000080",
+          "#808000",
+          "#800080",
+          "#008080",
+          "#C0C0C0",
+          "#808080",
+          "#FFA500",
+          "#FFC0CB",
+          "#A52A2A",
+          "#FFD700",
+          "#4B0082",
+          "#EE82EE",
+          "#F5DEB3",
+          "#D2691E"
+        ],
+        "allow_custom_color": false,
+        "undo_enabled": false,
+        "clear_canvas_enabled": false
+      },
+      "constraints": {
+        "time_limit_enabled": false,
+        "time_limit_seconds": 300,
+        "stroke_limit_enabled": false,
+        "stroke_limit_count": 100
+      },
+      "instructions": {
+        "show_instruction_dialog": true,
+        "instruction_text": "",
+        "instruction_duration": 0
+      }
+    },
+    {
+      "drawing_type": "HTP",
+      "display_name": "房樹人測驗 (House-Tree-Person)",
+      "enabled": true,
+      "order": 4,
+      "toolbar": {
+        "pen_enabled": true,
+        "eraser_enabled": true,
+        "color_picker_enabled": false,
+        "color_picker_mode": "disabled",
+        "color_palette": [
+          "#000000",
+          "#FFFFFF",
+          "#FF0000",
+          "#00FF00",
+          "#0000FF",
+          "#FFFF00",
+          "#FF00FF",
+          "#00FFFF",
+          "#800000",
+          "#008000",
+          "#000080",
+          "#808000",
+          "#800080",
+          "#008080",
+          "#C0C0C0",
+          "#808080",
+          "#FFA500",
+          "#FFC0CB",
+          "#A52A2A",
+          "#FFD700",
+          "#4B0082",
+          "#EE82EE",
+          "#F5DEB3",
+          "#D2691E"
+        ],
+        "allow_custom_color": false,
+        "undo_enabled": false,
+        "clear_canvas_enabled": false
+      },
+      "constraints": {
+        "time_limit_enabled": false,
+        "time_limit_seconds": 300,
+        "stroke_limit_enabled": false,
+        "stroke_limit_count": 100
+      },
+      "instructions": {
+        "show_instruction_dialog": true,
+        "instruction_text": "請畫一棟房子、一棵樹和一個人。",
+        "instruction_duration": 0
+      }
+    },
+    {
+      "drawing_type": "FD",
+      "display_name": "自由繪畫 (Free Drawing)",
+      "enabled": true,
+      "order": 5,
+      "toolbar": {
+        "pen_enabled": true,
+        "eraser_enabled": true,
+        "color_picker_enabled": true,
+        "color_picker_mode": "full_spectrum",
+        "color_palette": [
+          "#000000",
+          "#FFFFFF",
+          "#FF0000",
+          "#00FF00",
+          "#0000FF",
+          "#FFFF00",
+          "#FF00FF",
+          "#00FFFF",
+          "#800000",
+          "#008000",
+          "#000080",
+          "#808000",
+          "#800080",
+          "#008080",
+          "#C0C0C0",
+          "#808080",
+          "#FFA500",
+          "#FFC0CB",
+          "#A52A2A",
+          "#FFD700",
+          "#4B0082",
+          "#EE82EE",
+          "#F5DEB3",
+          "#D2691E"
+        ],
+        "allow_custom_color": false,
+        "undo_enabled": false,
+        "clear_canvas_enabled": false
+      },
+      "constraints": {
+        "time_limit_enabled": false,
+        "time_limit_seconds": 300,
+        "stroke_limit_enabled": false,
+        "stroke_limit_count": 100
+      },
+      "instructions": {
+        "show_instruction_dialog": true,
+        "instruction_text": "請自由繪畫，可以使用不同顏色。",
+        "instruction_duration": 0
+      }
+    }
+  ],
+  "global_settings": {
+    "canvas_background_color": "#FFFFFF",
+    "default_pen_width": 2.0,
+    "eraser_radius": 10.0,
+    "enable_pressure_sensitivity": true
+  }
+}

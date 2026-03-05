@@ -215,3 +215,5 @@ sys_dev/Phase2_color/wacom_recordings
 sys_dev/Phase2_divscreen_color/wacom_recordings
 sys_dev/Phase2_workspace/wacom_recordings
 sys_dev/Phase2_workspace/workspaces
+sys_dev/Phase2_instr/wacom_recordings
+sys_dev/Phase2_instr/workspaces
