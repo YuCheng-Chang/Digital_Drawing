@@ -13,6 +13,17 @@ class ColorPickerMode(Enum):
     FULL_SPECTRUM = "full_spectrum" # 完整色譜
 
 @dataclass
+class InstructionConfig:
+    """指導語配置"""
+    show_instruction_dialog: bool = True
+    instruction_text: str = ""
+    instruction_duration: int = 0
+
+    # 🆕 新增：指導語檔案路徑（空字串表示未設定）
+    experimenter_instruction_file: str = ""   # 施測者指導語檔案
+    participant_instruction_file: str = ""    # 受試者指導語檔案
+
+@dataclass
 class ToolbarConfig:
     """工具欄配置"""
     pen_enabled: bool = True
@@ -37,12 +48,7 @@ class DrawingConstraints:
     stroke_limit_enabled: bool = False
     stroke_limit_count: int = 100
 
-@dataclass
-class InstructionConfig:
-    """指導語配置"""
-    show_instruction_dialog: bool = True
-    instruction_text: str = ""
-    instruction_duration: int = 0  # 0 表示需手動關閉
+
 
 @dataclass
 class DrawingTestConfig:
@@ -107,7 +113,9 @@ class WorkspaceConfig:
                     'instructions': {
                         'show_instruction_dialog': test.instructions.show_instruction_dialog,
                         'instruction_text': test.instructions.instruction_text,
-                        'instruction_duration': test.instructions.instruction_duration
+                        'instruction_duration': test.instructions.instruction_duration,
+                        'experimenter_instruction_file': test.instructions.experimenter_instruction_file,
+                        'participant_instruction_file': test.instructions.participant_instruction_file,
                     }
                 }
                 for test in self.drawing_sequence
@@ -167,8 +175,11 @@ class WorkspaceConfig:
                 instructions=InstructionConfig(
                     show_instruction_dialog=instructions_data.get('show_instruction_dialog', True),
                     instruction_text=instructions_data.get('instruction_text', ''),
-                    instruction_duration=instructions_data.get('instruction_duration', 0)
+                    instruction_duration=instructions_data.get('instruction_duration', 0),
+                    experimenter_instruction_file=instructions_data.get('experimenter_instruction_file', ''),  # 🆕
+                    participant_instruction_file=instructions_data.get('participant_instruction_file', ''),    # 🆕
                 )
+
             )
             workspace.drawing_sequence.append(test)
         

@@ -520,6 +520,9 @@ class WacomDrawingCanvas(QWidget):
             
             self.logger.info(f"✅ 繪畫資訊: {self.current_drawing_info}")
             self.logger.info(f"✅ 測試配置: {self.current_test_config.display_name}")
+            if not self._show_instructions(self.current_test_config):
+                self.logger.info("❌ 指導語確認取消，程式退出")
+                return False
             return True
         else:
             # 🆕🆕🆕 用戶取消，返回 False（不退出程式）
@@ -604,7 +607,70 @@ class WacomDrawingCanvas(QWidget):
         self.ink_system.set_time_source(self.lsl.stream_manager.get_stream_time)
         self.logger.info("✅ 墨水系統時間源已設置為 LSL 時間")
 
-    
+    def _show_instructions(self, test_config):
+        """
+        選定繪畫類型後顯示指導語。
+        
+        流程：
+        1. 若有施測者指導語檔案 → 用系統預設程式開啟（主螢幕）
+        2. 若有受試者指導語檔案 → 在副螢幕顯示對話框，等待確認
+        
+        Returns:
+            bool: True 表示繼續，False 表示使用者取消
+        """
+        import subprocess, platform
+        from SubjectInfoDialog import ParticipantInstructionDialog
+        
+        exp_file = test_config.instructions.experimenter_instruction_file
+        par_file = test_config.instructions.participant_instruction_file
+        
+        # ── 1. 施測者指導語：用系統預設程式開啟 ──
+        if exp_file and os.path.exists(exp_file):
+            try:
+                if platform.system() == 'Windows':
+                    os.startfile(exp_file)
+                elif platform.system() == 'Darwin':
+                    subprocess.Popen(['open', exp_file])
+                else:
+                    subprocess.Popen(['xdg-open', exp_file])
+                self.logger.info(f"📄 已開啟施測者指導語: {exp_file}")
+            except Exception as e:
+                self.logger.error(f"❌ 開啟施測者指導語失敗: {e}")
+                QMessageBox.warning(self, "警告", f"無法開啟施測者指導語檔案：\n{e}")
+        elif exp_file:
+            self.logger.warning(f"⚠️ 施測者指導語檔案不存在: {exp_file}")
+            QMessageBox.warning(self, "警告", f"施測者指導語檔案不存在：\n{exp_file}")
+        
+        # ── 2. 受試者指導語：在副螢幕顯示對話框 ──
+        if par_file and os.path.exists(par_file):
+            dialog = ParticipantInstructionDialog(
+                instruction_file=par_file,
+                drawing_type_name=test_config.display_name,
+                parent=self
+            )
+            
+            if self.is_extended_mode:
+                # 延伸模式：全螢幕顯示在副螢幕
+                dialog.move(self.secondary_screen.x(), self.secondary_screen.y())
+                dialog.showFullScreen()
+            else:
+                # 單螢幕模式：最大化視窗
+                dialog.showMaximized()
+            
+            self.logger.info(f"📋 顯示受試者指導語: {par_file}")
+            result = dialog.exec_()
+            
+            if result != QDialog.Accepted:
+                self.logger.info("❌ 受試者取消指導語確認")
+                return False
+            
+            self.logger.info("✅ 受試者已確認指導語")
+        elif par_file:
+            self.logger.warning(f"⚠️ 受試者指導語檔案不存在: {par_file}")
+            QMessageBox.warning(self, "警告", f"受試者指導語檔案不存在：\n{par_file}")
+        
+        return True
+        
     def start_new_drawing(self):
         """🆕 開始新繪畫（修改版：先顯示對話框，確認後才終止當前繪畫）"""
         try:
@@ -656,6 +722,12 @@ class WacomDrawingCanvas(QWidget):
             self.logger.info(f"✅ 新繪畫資訊: {self.current_drawing_info}")
             self.logger.info(f"✅ 測試配置: {self.current_test_config.display_name}")
             
+            # 6.5 顯示指導語（若有設定）
+            if not self._show_instructions(self.current_test_config):
+                self.logger.info("❌ 指導語確認取消，恢復當前繪畫")
+                # 恢復計數器（因為已提前遞增）
+                self.drawing_counter = self.drawing_counter  # 此時尚未賦值，不需回退
+                return
             # 7. 更新視窗標題
             self._update_window_title()
             

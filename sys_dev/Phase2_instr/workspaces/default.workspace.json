@@ -55,7 +55,9 @@
       "instructions": {
         "show_instruction_dialog": true,
         "instruction_text": "這是練習階段，請熟悉工具的使用。",
-        "instruction_duration": 0
+        "instruction_duration": 0,
+        "experimenter_instruction_file": "",
+        "participant_instruction_file": ""
       }
     },
     {
@@ -107,7 +109,9 @@
       "instructions": {
         "show_instruction_dialog": true,
         "instruction_text": "請畫一個完整的人。",
-        "instruction_duration": 0
+        "instruction_duration": 0,
+        "experimenter_instruction_file": "",
+        "participant_instruction_file": ""
       }
     },
     {
@@ -159,7 +163,9 @@
       "instructions": {
         "show_instruction_dialog": true,
         "instruction_text": "請畫一棟房子、一棵樹和一個人。",
-        "instruction_duration": 0
+        "instruction_duration": 0,
+        "experimenter_instruction_file": "",
+        "participant_instruction_file": ""
       }
     },
     {
@@ -211,7 +217,9 @@
       "instructions": {
         "show_instruction_dialog": true,
         "instruction_text": "請自由繪畫，可以使用不同顏色。",
-        "instruction_duration": 0
+        "instruction_duration": 0,
+        "experimenter_instruction_file": "",
+        "participant_instruction_file": ""
       }
     }
   ],

@@ -2,7 +2,7 @@
 import hashlib
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                           QLineEdit, QPushButton, QComboBox, QMessageBox, 
-                          QDateEdit, QFormLayout, QListWidget, QListWidgetItem, QWidget)
+                          QDateEdit, QFormLayout, QListWidget, QListWidgetItem, QWidget,QFileDialog)
 from PyQt5.QtCore import QDate, Qt
 from datetime import datetime
 from Config import WorkspaceConfig, get_default_workspace, ColorPickerMode, DrawingTestConfig, ToolbarConfig
@@ -933,7 +933,7 @@ class TestConfigEditorDialog(QDialog):
         # 🆕 修改標題
         self.setWindowTitle("編輯測驗配置")
         self.setModal(True)
-        self.setFixedSize(600, 500)
+        self.setFixedSize(600, 620)
         
         self.setStyleSheet("""
             QLabel {
@@ -997,6 +997,48 @@ class TestConfigEditorDialog(QDialog):
         self.color_picker_mode_combo.addItem("完整色譜", ColorPickerMode.FULL_SPECTRUM.value)
         form_layout.addRow("顏色選擇器模式:", self.color_picker_mode_combo)
         
+        # 分隔標題
+        instruction_label = QLabel("── 指導語檔案 ──")
+        instruction_label.setStyleSheet("font-size: 14px; color: #888888;")
+        form_layout.addRow(instruction_label)
+
+        # 施測者指導語檔案
+        experimenter_layout = QHBoxLayout()
+        self.experimenter_file_edit = QLineEdit()
+        self.experimenter_file_edit.setPlaceholderText("（未設定）")
+        self.experimenter_file_edit.setReadOnly(True)
+        experimenter_browse_btn = QPushButton("瀏覽...")
+        experimenter_browse_btn.setFixedWidth(80)
+        experimenter_browse_btn.setMinimumHeight(0)  # 覆蓋全域樣式的 min-height
+        experimenter_browse_btn.setMaximumHeight(35)
+        experimenter_browse_btn.clicked.connect(self._browse_experimenter_file)
+        experimenter_clear_btn = QPushButton("清除")
+        experimenter_clear_btn.setFixedWidth(60)
+        experimenter_clear_btn.setMaximumHeight(35)
+        experimenter_clear_btn.clicked.connect(lambda: self.experimenter_file_edit.clear())
+        experimenter_layout.addWidget(self.experimenter_file_edit)
+        experimenter_layout.addWidget(experimenter_browse_btn)
+        experimenter_layout.addWidget(experimenter_clear_btn)
+        form_layout.addRow("施測者指導語:", experimenter_layout)
+
+        # 受試者指導語檔案
+        participant_layout = QHBoxLayout()
+        self.participant_file_edit = QLineEdit()
+        self.participant_file_edit.setPlaceholderText("（未設定）")
+        self.participant_file_edit.setReadOnly(True)
+        participant_browse_btn = QPushButton("瀏覽...")
+        participant_browse_btn.setFixedWidth(80)
+        participant_browse_btn.setMaximumHeight(35)
+        participant_browse_btn.clicked.connect(self._browse_participant_file)
+        participant_clear_btn = QPushButton("清除")
+        participant_clear_btn.setFixedWidth(60)
+        participant_clear_btn.setMaximumHeight(35)
+        participant_clear_btn.clicked.connect(lambda: self.participant_file_edit.clear())
+        participant_layout.addWidget(self.participant_file_edit)
+        participant_layout.addWidget(participant_browse_btn)
+        participant_layout.addWidget(participant_clear_btn)
+        form_layout.addRow("受試者指導語:", participant_layout)
+
         main_layout.addLayout(form_layout)
         
         button_layout = QHBoxLayout()
@@ -1015,7 +1057,34 @@ class TestConfigEditorDialog(QDialog):
         
         main_layout.addLayout(button_layout)
         self.setLayout(main_layout)
-    
+
+    def _browse_experimenter_file(self):
+        """瀏覽施測者指導語檔案"""
+        path, _ = QFileDialog.getOpenFileName(
+            self, "選擇施測者指導語檔案", "",
+            "所有支援格式 (*.pdf *.txt *.png *.jpg *.jpeg *.bmp *.docx);;"
+            "PDF 文件 (*.pdf);;"
+            "文字檔 (*.txt);;"
+            "圖片 (*.png *.jpg *.jpeg *.bmp);;"
+            "Word 文件 (*.docx)"
+        )
+        if path:
+            self.experimenter_file_edit.setText(path)
+
+    def _browse_participant_file(self):
+        """瀏覽受試者指導語檔案"""
+        path, _ = QFileDialog.getOpenFileName(
+            self, "選擇受試者指導語檔案", "",
+            "所有支援格式 (*.pdf *.txt *.png *.jpg *.jpeg *.bmp *.docx);;"
+            "PDF 文件 (*.pdf);;"
+            "文字檔 (*.txt);;"
+            "圖片 (*.png *.jpg *.jpeg *.bmp);;"
+            "Word 文件 (*.docx)"
+        )
+        if path:
+            self.participant_file_edit.setText(path)
+
+
     def load_test_data(self):
         """載入測驗數據到 UI"""
         self.drawing_type_edit.setText(self.test_config.drawing_type)
@@ -1029,6 +1098,13 @@ class TestConfigEditorDialog(QDialog):
         mode_index = self.color_picker_mode_combo.findData(self.test_config.toolbar.color_picker_mode.value)
         if mode_index >= 0:
             self.color_picker_mode_combo.setCurrentIndex(mode_index)
+        self.experimenter_file_edit.setText(
+            self.test_config.instructions.experimenter_instruction_file
+        )
+        self.participant_file_edit.setText(
+            self.test_config.instructions.participant_instruction_file
+        )
+
     
     def save_test_config(self):
         """儲存測驗配置"""
@@ -1053,7 +1129,12 @@ class TestConfigEditorDialog(QDialog):
             
             mode_value = self.color_picker_mode_combo.currentData()
             self.test_config.toolbar.color_picker_mode = ColorPickerMode(mode_value)
-            
+            # save_test_config() 中，self.accept() 前新增
+            self.test_config.instructions.experimenter_instruction_file = \
+                self.experimenter_file_edit.text().strip()
+            self.test_config.instructions.participant_instruction_file = \
+                self.participant_file_edit.text().strip()
+
             self.accept()
             
         except Exception as e:
@@ -1286,6 +1367,108 @@ class DrawingTypeDialog(QDialog):
         
         self.accept()
 
+class ParticipantInstructionDialog(QDialog):
+    """受試者指導語對話框（顯示在副螢幕/受試者螢幕）"""
+    
+    def __init__(self, instruction_file: str, drawing_type_name: str, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(f"指導語 — {drawing_type_name}")
+        self.setModal(True)
+        # 無邊框、置頂，讓它覆蓋整個副螢幕
+        self.setWindowFlags(
+            Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
+        )
+        self.logger = logging.getLogger('ParticipantInstructionDialog')
+        self._setup_ui(instruction_file, drawing_type_name)
+    
+    def _setup_ui(self, instruction_file: str, drawing_type_name: str):
+        main_layout = QVBoxLayout()
+        main_layout.setSpacing(20)
+        main_layout.setContentsMargins(40, 40, 40, 40)
+        self.setStyleSheet("background-color: white;")
+        
+        # 標題
+        title_label = QLabel(f"【{drawing_type_name}】指導語")
+        title_label.setStyleSheet(
+            "font-size: 28px; font-weight: bold; color: #2196F3;"
+        )
+        title_label.setAlignment(Qt.AlignCenter)
+        main_layout.addWidget(title_label)
+        
+        # 內容區域
+        content_widget = self._load_content(instruction_file)
+        main_layout.addWidget(content_widget, stretch=1)
+        
+        # 確定按鈕
+        confirm_btn = QPushButton("✅ 我已閱讀，開始繪畫")
+        confirm_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50;
+                color: white;
+                font-size: 24px;
+                font-weight: bold;
+                min-height: 70px;
+                border-radius: 10px;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+        """)
+        confirm_btn.clicked.connect(self.accept)
+        main_layout.addWidget(confirm_btn)
+        
+        self.setLayout(main_layout)
+    
+    def _load_content(self, instruction_file: str) -> QWidget:
+        """根據檔案類型載入內容"""
+        from PyQt5.QtWidgets import QScrollArea, QTextEdit, QLabel
+        from PyQt5.QtGui import QPixmap
+        
+        ext = Path(instruction_file).suffix.lower() if instruction_file else ''
+        
+        # 圖片類型
+        if ext in ('.png', '.jpg', '.jpeg', '.bmp', '.gif'):
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            img_label = QLabel()
+            img_label.setAlignment(Qt.AlignCenter)
+            pixmap = QPixmap(instruction_file)
+            if not pixmap.isNull():
+                img_label.setPixmap(
+                    pixmap.scaled(1200, 700, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                )
+            else:
+                img_label.setText(f"⚠️ 無法載入圖片：{instruction_file}")
+                img_label.setStyleSheet("font-size: 18px; color: red;")
+            scroll.setWidget(img_label)
+            return scroll
+        
+        # 文字類型（.txt）
+        elif ext == '.txt':
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            text_edit = QTextEdit()
+            text_edit.setReadOnly(True)
+            text_edit.setStyleSheet("font-size: 20px; line-height: 1.8;")
+            try:
+                with open(instruction_file, 'r', encoding='utf-8') as f:
+                    text_edit.setPlainText(f.read())
+            except Exception as e:
+                text_edit.setPlainText(f"⚠️ 無法讀取檔案：{e}")
+            scroll.setWidget(text_edit)
+            return scroll
+        
+        # PDF / DOCX / 其他：用系統開啟，畫面顯示提示
+        else:
+            label = QLabel(
+                f"📄 指導語檔案已在另一個視窗開啟\n\n"
+                f"檔案：{Path(instruction_file).name}\n\n"
+                f"請閱讀完畢後按下方按鈕開始繪畫"
+            )
+            label.setStyleSheet("font-size: 20px; color: #333333;")
+            label.setAlignment(Qt.AlignCenter)
+            label.setWordWrap(True)
+            return label
 
 def generate_workspace_hash(workspace: WorkspaceConfig) -> str:
     """
