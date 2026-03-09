@@ -672,17 +672,19 @@ class WacomDrawingCanvas(QWidget):
         return True
         
     def start_new_drawing(self):
-        """🆕 開始新繪畫（修改版：先顯示對話框，確認後才終止當前繪畫）"""
+        # 先不中止當前繪畫，但時間暫停，等待用戶確認或取消
         try:
-            self.logger.info("=" * 60)
             self.logger.info("🎨 準備開始新繪畫")
-            self.logger.info("=" * 60)
-            
-            # 1. 先遞增繪畫計數器（用於對話框顯示）
             next_drawing_counter = self.drawing_counter + 1
-            
-            # 2. 先獲取新的繪畫類型（不終止當前繪畫）
-            # ✅ 修正：添加 self.workspace 參數
+
+            # ✅ 1. 先強制結束當前筆劃
+            self._force_end_current_stroke()
+
+            # ✅ 2. 暫停 LSL 記錄（對話框期間不記錄數據）
+            if hasattr(self, 'lsl') and self.lsl is not None:
+                self.lsl.pause_recording()
+                self.logger.info("⏸️ LSL 記錄已暫停（等待用戶選擇）")
+
             dialog = DrawingTypeDialog(next_drawing_counter, self.workspace, self)
             
             if self.is_extended_mode:
@@ -699,8 +701,12 @@ class WacomDrawingCanvas(QWidget):
             
             # 3. 只有當用戶點擊「確定」時才執行後續操作
             if dialog.exec_() != dialog.Accepted:
+                # ✅ 3a. 用戶取消 → 恢復記錄，繼續當前繪畫
+                if hasattr(self, 'lsl') and self.lsl is not None:
+                    self.lsl.resume_recording()
+                    self.logger.info("▶️ 用戶取消，LSL 記錄已恢復")
                 self.logger.info("❌ 用戶取消新繪畫，繼續當前繪畫")
-                return  # ✅ 這裡只是返回，不退出程式
+                return
             
             # 4. 用戶確認，現在才開始終止當前繪畫
             self.logger.info("✅ 用戶確認新繪畫，開始終止當前繪畫")
