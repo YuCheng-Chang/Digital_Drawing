@@ -11,6 +11,7 @@
       "display_name": "練習測試 (Practice)",
       "enabled": true,
       "order": 1,
+      "screen_orientation": "landscape",
       "toolbar": {
         "pen_enabled": true,
         "eraser_enabled": true,
@@ -65,6 +66,7 @@
       "display_name": "畫人測驗 (Draw-a-Person)",
       "enabled": true,
       "order": 2,
+      "screen_orientation": "landscape",
       "toolbar": {
         "pen_enabled": true,
         "eraser_enabled": true,
@@ -119,6 +121,7 @@
       "display_name": "房樹人測驗 (House-Tree-Person)",
       "enabled": true,
       "order": 3,
+      "screen_orientation": "landscape",
       "toolbar": {
         "pen_enabled": true,
         "eraser_enabled": true,
@@ -173,6 +176,7 @@
       "display_name": "自由繪畫 (Free Drawing)",
       "enabled": true,
       "order": 4,
+      "screen_orientation": "landscape",
       "toolbar": {
         "pen_enabled": true,
         "eraser_enabled": true,

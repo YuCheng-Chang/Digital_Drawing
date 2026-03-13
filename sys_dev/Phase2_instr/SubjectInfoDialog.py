@@ -933,7 +933,8 @@ class TestConfigEditorDialog(QDialog):
         # 🆕 修改標題
         self.setWindowTitle("編輯測驗配置")
         self.setModal(True)
-        self.setFixedSize(600, 620)
+        self.setFixedSize(600, 680)
+
         
         self.setStyleSheet("""
             QLabel {
@@ -979,7 +980,12 @@ class TestConfigEditorDialog(QDialog):
         self.order_spin = QComboBox()
         self.order_spin.addItems([str(i) for i in range(1, 21)])
         form_layout.addRow("順序:", self.order_spin)
-        
+        # 🆕 螢幕方向選擇
+        self.screen_orientation_combo = QComboBox()
+        self.screen_orientation_combo.addItem("橫向 (Landscape)", "landscape")
+        self.screen_orientation_combo.addItem("直向 (Portrait)", "portrait")
+        form_layout.addRow("副螢幕方向:", self.screen_orientation_combo)
+
         from PyQt5.QtWidgets import QCheckBox
         self.pen_enabled_check = QCheckBox("啟用筆工具")
         form_layout.addRow("", self.pen_enabled_check)
@@ -1090,6 +1096,13 @@ class TestConfigEditorDialog(QDialog):
         self.drawing_type_edit.setText(self.test_config.drawing_type)
         self.display_name_edit.setText(self.test_config.display_name)
         self.order_spin.setCurrentText(str(self.test_config.order))
+        # 🆕 載入螢幕方向
+        orientation_index = self.screen_orientation_combo.findData(
+            self.test_config.screen_orientation
+        )
+        if orientation_index >= 0:
+            self.screen_orientation_combo.setCurrentIndex(orientation_index)
+
         
         self.pen_enabled_check.setChecked(self.test_config.toolbar.pen_enabled)
         self.eraser_enabled_check.setChecked(self.test_config.toolbar.eraser_enabled)
@@ -1112,7 +1125,9 @@ class TestConfigEditorDialog(QDialog):
             self.test_config.drawing_type = self.drawing_type_edit.text().strip()
             self.test_config.display_name = self.display_name_edit.text().strip()
             self.test_config.order = int(self.order_spin.currentText())
-            
+            # 🆕 儲存螢幕方向
+            self.test_config.screen_orientation = self.screen_orientation_combo.currentData()
+
             if not self.test_config.drawing_type:
                 # 🆕 修改用詞
                 QMessageBox.warning(self, "錯誤", "繪畫類型不能為空")
@@ -1269,11 +1284,12 @@ class SubjectInfoDialog(QDialog):
 class DrawingTypeDialog(QDialog):
     """繪畫類型選擇對話框 (🆕 只顯示已啟用的測驗)"""
     
-    def __init__(self, drawing_counter: int, workspace: WorkspaceConfig, parent=None):
+    def __init__(self, drawing_counter: int, workspace: WorkspaceConfig, 
+                canvas_ref=None, parent=None):  # 🆕 新增 canvas_ref
         super().__init__(parent)
         self.setWindowTitle("選擇繪畫類型")
         self.setModal(True)
-        self.setFixedSize(550, 350)
+        self.setFixedSize(550, 430)  # 🆕 高度從 350 增加到 430（多一個按鈕）
         
         self.setStyleSheet("""
             QLabel {
@@ -1298,6 +1314,9 @@ class DrawingTypeDialog(QDialog):
         self.drawing_info = None
         self.drawing_counter = drawing_counter
         self.workspace = workspace
+        self.canvas_ref = canvas_ref        # 🆕
+        self._artwork_showing = False       # 🆕 展示狀態旗標
+        self._artwork_window = None         # 🆕 展示視窗參考
         
         self.setup_ui()
     
@@ -1324,26 +1343,82 @@ class DrawingTypeDialog(QDialog):
         
         layout.addRow("繪畫類型:", self.drawing_type_combo)
         
+        # 🆕 展示繪畫成品按鈕（藍色，獨立一行）
+        self.show_artwork_button = QPushButton("🖼️ 展示繪畫成品")
+        self.show_artwork_button.setStyleSheet("""
+            QPushButton {
+                background-color: #2196F3;
+                color: white;
+                font-size: 20px;
+                font-weight: bold;
+                min-height: 60px;
+                border-radius: 8px;
+            }
+            QPushButton:hover {
+                background-color: #1976D2;
+            }
+            QPushButton:disabled {
+                background-color: #90CAF9;
+                color: #ffffff;
+            }
+        """)
+        self.show_artwork_button.clicked.connect(self._toggle_artwork)
+        # 🆕 若無 canvas_ref 則隱藏此按鈕
+        if self.canvas_ref is None:
+            self.show_artwork_button.hide()
+
         button_layout = QHBoxLayout()
         button_layout.setSpacing(20)
-        
+
         self.ok_button = QPushButton("開始繪畫")
         self.ok_button.setStyleSheet("background-color: #4CAF50; color: white;")
         self.ok_button.clicked.connect(self.accept_input)
-        
+
         self.cancel_button = QPushButton("取消")
         self.cancel_button.setStyleSheet("background-color: #f44336; color: white;")
         self.cancel_button.clicked.connect(self.reject)
-        
+
         button_layout.addWidget(self.ok_button)
         button_layout.addWidget(self.cancel_button)
-        
+
         main_layout = QVBoxLayout()
         main_layout.addLayout(layout)
         main_layout.addStretch()
-        main_layout.addLayout(button_layout)
-        
+        main_layout.addWidget(self.show_artwork_button)  # 🆕 展示按鈕在上
+        main_layout.addLayout(button_layout)             # 開始/取消在下
+
         self.setLayout(main_layout)
+
+    def _toggle_artwork(self):
+        """🆕 切換展示/關閉繪畫成品"""
+        logger = logging.getLogger('DrawingTypeDialog')  # 🔧 移到開頭
+        if not self._artwork_showing:
+            # ── 展示成品 ──
+            if self.canvas_ref is not None:
+                self._artwork_window = self.canvas_ref.show_artwork_display()
+            self.show_artwork_button.setText("❌ 關閉成品")
+            self.ok_button.setEnabled(False)
+            self.cancel_button.setEnabled(False)
+            self._artwork_showing = True
+            logger.info("🖼️ 展示繪畫成品")
+        else:
+            # ── 關閉成品 ──
+            if self.canvas_ref is not None:
+                self.canvas_ref.hide_artwork_display()
+            self._artwork_window = None
+            self.show_artwork_button.setText("🖼️ 展示繪畫成品")
+            self.ok_button.setEnabled(True)
+            self.cancel_button.setEnabled(True)
+            self._artwork_showing = False
+            logger.info("❌ 關閉繪畫成品展示")
+
+    def reject(self):
+        """🆕 覆寫 reject，確保關閉對話框時也關閉展示視窗"""
+        if self._artwork_showing and self.canvas_ref is not None:
+            self.canvas_ref.hide_artwork_display()
+            self._artwork_showing = False
+        super().reject()
+
 
     def accept_input(self):
         drawing_type = self.drawing_type_combo.currentData()
@@ -1368,25 +1443,180 @@ class DrawingTypeDialog(QDialog):
         self.accept()
 
 class ParticipantInstructionDialog(QDialog):
-    """受試者指導語對話框（顯示在副螢幕/受試者螢幕）"""
+    """受試者指導語對話框（支援 Qt 畫面旋轉）"""
     
     def __init__(self, instruction_file: str, drawing_type_name: str, parent=None):
         super().__init__(parent)
         self.setWindowTitle(f"指導語 — {drawing_type_name}")
         self.setModal(True)
-        # 無邊框、置頂，讓它覆蓋整個副螢幕
         self.setWindowFlags(
             Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
         )
         self.logger = logging.getLogger('ParticipantInstructionDialog')
+        self._rotation = 0  # 旋轉角度（0 或 -90）
+        self._instruction_file = instruction_file
+        self._drawing_type_name = drawing_type_name
         self._setup_ui(instruction_file, drawing_type_name)
-    
+
+    def set_rotation(self, angle: int):
+        """
+        設定旋轉角度並重建 UI
+        必須在 showFullScreen() 之前呼叫
+        
+        Args:
+            angle: 0 = 不旋轉，-90 = 逆時針 90°（直向）
+        """
+        self._rotation = angle
+
+    def showFullScreen(self):
+        """覆寫 showFullScreen，在顯示前根據旋轉角度重建 UI"""
+        if self._rotation == -90:
+            self._rebuild_for_portrait()
+        super().showFullScreen()
+
+    def _rebuild_for_portrait(self):
+        """
+        直向模式：用 QGraphicsView + QGraphicsProxyWidget 旋轉整個內容
+        
+        原理：
+        1. 建立一個「內容容器」widget（橫向尺寸）
+        2. 用 QGraphicsProxyWidget 把它放進 QGraphicsScene
+        3. 對 scene 套用 -90° 旋轉
+        4. 用 QGraphicsView 顯示，視覺上看起來是直向
+        """
+        from PyQt5.QtWidgets import (QGraphicsView, QGraphicsScene,
+                                      QGraphicsProxyWidget, QSizePolicy)
+        from PyQt5.QtCore import QRectF
+
+        # ── 1. 取得螢幕尺寸 ──
+        from PyQt5.QtWidgets import QDesktopWidget
+        desktop = QDesktopWidget()
+        # 找到對話框所在的螢幕
+        screen_idx = desktop.screenNumber(self)
+        if screen_idx < 0:
+            screen_idx = 1 if desktop.screenCount() > 1 else 0
+        screen = desktop.screenGeometry(screen_idx)
+        screen_w = screen.width()   # 實體橫向長邊，例如 1920
+        screen_h = screen.height()  # 實體橫向短邊，例如 1080
+
+        # ── 2. 建立內容容器（邏輯尺寸 = 旋轉後的直向尺寸）──
+        # 旋轉 -90° 後：邏輯寬 = screen_h，邏輯高 = screen_w
+        content_w = screen_h   # 例如 1080（直向的寬）
+        content_h = screen_w   # 例如 1920（直向的高）
+
+        content_widget = QWidget()
+        content_widget.setFixedSize(content_w, content_h)
+        content_widget.setStyleSheet("background-color: white;")
+
+        # ── 3. 在內容容器中建立 UI ──
+        self._build_content_layout(content_widget, content_w, content_h)
+
+        # ── 4. 建立 QGraphicsScene + QGraphicsProxyWidget ──
+        scene = QGraphicsScene()
+        proxy = QGraphicsProxyWidget()
+        proxy.setWidget(content_widget)
+        scene.addItem(proxy)
+
+        # ── 5. 套用旋轉變換 ──
+        # 旋轉 -90° 後，原本 (content_w x content_h) 的 widget
+        # 視覺上變成 (content_h x content_w) = (screen_w x screen_h)
+        proxy.setTransformOriginPoint(content_w / 2, content_h / 2)
+        proxy.setRotation(-90)
+
+        # ── 6. 設定 scene 範圍（旋轉後的視覺尺寸）──
+        # 旋轉後視覺寬 = content_h = screen_w
+        # 旋轉後視覺高 = content_w = screen_h
+        scene.setSceneRect(
+            -(content_h - content_w) / 2,   # x 偏移
+            -(content_w - content_h) / 2,   # y 偏移
+            content_h,                       # 視覺寬 = screen_w
+            content_w                        # 視覺高 = screen_h
+        )
+
+        # ── 7. 建立 QGraphicsView 填滿整個對話框 ──
+        view = QGraphicsView(scene)
+        view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        view.setFrameShape(view.NoFrame)
+        view.setStyleSheet("background-color: white; border: none;")
+        view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        # ── 8. 替換對話框的 layout ──
+        old_layout = self.layout()
+        if old_layout is not None:
+            # 清空舊 layout
+            while old_layout.count():
+                item = old_layout.takeAt(0)
+                if item.widget():
+                    item.widget().setParent(None)
+            import sip
+            sip.delete(old_layout)
+
+        new_layout = QVBoxLayout()
+        new_layout.setContentsMargins(0, 0, 0, 0)
+        new_layout.setSpacing(0)
+        new_layout.addWidget(view)
+        self.setLayout(new_layout)
+
+        self.logger.info(
+            f"✅ 直向指導語 UI 已重建: "
+            f"content={content_w}x{content_h}, "
+            f"visual={screen_w}x{screen_h}"
+        )
+
+    def _build_content_layout(self, parent_widget: QWidget,
+                               content_w: int, content_h: int):
+        """
+        在指定的 parent_widget 中建立指導語 UI 內容
+        
+        Args:
+            parent_widget: 要放置 UI 的容器
+            content_w: 容器寬度
+            content_h: 容器高度
+        """
+        layout = QVBoxLayout(parent_widget)
+        layout.setSpacing(20)
+        layout.setContentsMargins(40, 40, 40, 40)
+
+        # 標題
+        title_label = QLabel(f"【{self._drawing_type_name}】指導語")
+        title_label.setStyleSheet(
+            "font-size: 28px; font-weight: bold; color: #2196F3;"
+        )
+        title_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(title_label)
+
+        # 內容區域
+        content_widget = self._load_content(self._instruction_file)
+        layout.addWidget(content_widget, stretch=1)
+
+        # 確定按鈕
+        confirm_btn = QPushButton("✅ 我已閱讀，開始繪畫")
+        confirm_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50;
+                color: white;
+                font-size: 24px;
+                font-weight: bold;
+                min-height: 70px;
+                border-radius: 10px;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+        """)
+        confirm_btn.clicked.connect(self.accept)
+        layout.addWidget(confirm_btn)
+
+        parent_widget.setLayout(layout)
+
     def _setup_ui(self, instruction_file: str, drawing_type_name: str):
+        """建立預設（橫向）UI"""
         main_layout = QVBoxLayout()
         main_layout.setSpacing(20)
         main_layout.setContentsMargins(40, 40, 40, 40)
         self.setStyleSheet("background-color: white;")
-        
+
         # 標題
         title_label = QLabel(f"【{drawing_type_name}】指導語")
         title_label.setStyleSheet(
@@ -1394,11 +1624,11 @@ class ParticipantInstructionDialog(QDialog):
         )
         title_label.setAlignment(Qt.AlignCenter)
         main_layout.addWidget(title_label)
-        
+
         # 內容區域
         content_widget = self._load_content(instruction_file)
         main_layout.addWidget(content_widget, stretch=1)
-        
+
         # 確定按鈕
         confirm_btn = QPushButton("✅ 我已閱讀，開始繪畫")
         confirm_btn.setStyleSheet("""
@@ -1416,17 +1646,16 @@ class ParticipantInstructionDialog(QDialog):
         """)
         confirm_btn.clicked.connect(self.accept)
         main_layout.addWidget(confirm_btn)
-        
+
         self.setLayout(main_layout)
-    
+
     def _load_content(self, instruction_file: str) -> QWidget:
-        """根據檔案類型載入內容"""
+        """根據檔案類型載入內容（不變）"""
         from PyQt5.QtWidgets import QScrollArea, QTextEdit, QLabel
         from PyQt5.QtGui import QPixmap
-        
+
         ext = Path(instruction_file).suffix.lower() if instruction_file else ''
-        
-        # 圖片類型
+
         if ext in ('.png', '.jpg', '.jpeg', '.bmp', '.gif'):
             scroll = QScrollArea()
             scroll.setWidgetResizable(True)
@@ -1442,8 +1671,7 @@ class ParticipantInstructionDialog(QDialog):
                 img_label.setStyleSheet("font-size: 18px; color: red;")
             scroll.setWidget(img_label)
             return scroll
-        
-        # 文字類型（.txt）
+
         elif ext == '.txt':
             scroll = QScrollArea()
             scroll.setWidgetResizable(True)
@@ -1457,8 +1685,7 @@ class ParticipantInstructionDialog(QDialog):
                 text_edit.setPlainText(f"⚠️ 無法讀取檔案：{e}")
             scroll.setWidget(text_edit)
             return scroll
-        
-        # PDF / DOCX / 其他：用系統開啟，畫面顯示提示
+
         else:
             label = QLabel(
                 f"📄 指導語檔案已在另一個視窗開啟\n\n"
@@ -1469,6 +1696,7 @@ class ParticipantInstructionDialog(QDialog):
             label.setAlignment(Qt.AlignCenter)
             label.setWordWrap(True)
             return label
+
 
 def generate_workspace_hash(workspace: WorkspaceConfig) -> str:
     """
@@ -1492,6 +1720,7 @@ def generate_workspace_hash(workspace: WorkspaceConfig) -> str:
                 'display_name': test.display_name,
                 'order': test.order,
                 'enabled': test.enabled,
+                'screen_orientation': test.screen_orientation,  # ✅ 新增
                 'pen_enabled': test.toolbar.pen_enabled,
                 'eraser_enabled': test.toolbar.eraser_enabled,
                 'color_picker_enabled': test.toolbar.color_picker_enabled,
@@ -1499,6 +1728,7 @@ def generate_workspace_hash(workspace: WorkspaceConfig) -> str:
             }
             for test in workspace.drawing_sequence
         ],
+
         'canvas_background_color': workspace.canvas_background_color,
         'default_pen_width': workspace.default_pen_width,
         'eraser_radius': workspace.eraser_radius,
@@ -1636,6 +1866,11 @@ def generate_workspace_config_content(workspace: WorkspaceConfig, config_hash: s
     for test in workspace.drawing_sequence:
         lines.append(f"【{test.order}】 {test.display_name} ({test.drawing_type})")
         lines.append(f"  啟用狀態: {'✓ 已啟用' if test.enabled else '✗ 未啟用'}")
+        
+        # ✅ 新增：副螢幕方向
+        orientation_text = "直向 (Portrait)" if test.screen_orientation == "portrait" else "橫向 (Landscape)"
+        lines.append(f"  副螢幕方向: {orientation_text}")
+        
         lines.append(f"  工具配置:")
         lines.append(f"    - 筆工具: {'✓' if test.toolbar.pen_enabled else '✗'}")
         lines.append(f"    - 橡皮擦: {'✓' if test.toolbar.eraser_enabled else '✗'}")

@@ -1,4 +1,6 @@
 # main.py
+import ctypes          # 🆕 用於 Windows 螢幕旋轉 API
+import ctypes.wintypes # 🆕
 from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QHBoxLayout, QVBoxLayout, QMessageBox, QDesktopWidget, QLabel,QColorDialog, QDialog
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPainter, QPen, QColor, QTabletEvent,QPixmap, QCursor, QBrush
@@ -19,7 +21,326 @@ logging.basicConfig(
   format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
-# main.py (部分修改)
+# ============================================================
+# 🆕 螢幕旋轉管理器（Windows API）
+# ============================================================
+class ScreenRotationManager:
+    """
+    管理副螢幕旋轉（透過 Windows ChangeDisplaySettingsEx API）
+    
+    方向對應：
+      DMDO_DEFAULT  = 0  → 橫向 (Landscape)
+      DMDO_90       = 1  → 直向 (Portrait，順時針 90°)
+      DMDO_180      = 2  → 橫向倒置
+      DMDO_270      = 3  → 直向倒置
+    """
+    DMDO_DEFAULT = 0   # 橫向
+    DMDO_90      = 1   # 直向（順時針 90°）
+
+    def __init__(self, logger=None):
+        self.logger = logger or logging.getLogger('ScreenRotationManager')
+        self._original_orientation = None   # 程式啟動前的原始方向
+        self._device_name = None            # 副螢幕裝置名稱
+        self._current_orientation = None    # 目前套用的方向
+
+    # ── 內部常數 ──────────────────────────────────────────────
+    _DM_DISPLAYORIENTATION = 0x00000080
+    _CDS_UPDATEREGISTRY    = 0x00000001
+    _CDS_RESET             = 0x40000000
+    _DISP_CHANGE_SUCCESSFUL = 0
+
+    def _get_devmode(self, device_name: str):
+        """取得指定裝置的 DEVMODE 結構"""
+        import ctypes
+        dm = ctypes.create_string_buffer(220)  # sizeof DEVMODE
+        # 設定 dmSize
+        ctypes.cast(dm, ctypes.POINTER(ctypes.c_uint16))[0] = 220
+        if ctypes.windll.user32.EnumDisplaySettingsW(device_name, -1, dm):
+            return dm
+        return None
+
+    def _get_orientation_from_devmode(self, dm) -> int:
+        """從 DEVMODE 取得目前方向值"""
+        import ctypes, struct
+        # dmDisplayOrientation 在 DEVMODE 的偏移量為 164 (bytes)
+        orientation = struct.unpack_from('<I', dm, 164)[0]
+        return orientation
+
+    def _set_orientation(self, device_name: str, orientation: int) -> bool:
+        import ctypes, struct
+        try:
+            dm = self._get_devmode(device_name)
+            if dm is None:
+                self.logger.error(f"❌ 無法取得裝置 DEVMODE: {device_name}")
+                return False
+
+            current_orientation = self._get_orientation_from_devmode(dm)
+            if current_orientation == orientation:
+                self.logger.info(f"✅ 螢幕方向已是目標方向 ({orientation})，無需旋轉")
+                return True
+
+            width  = struct.unpack_from('<I', dm, 156)[0]
+            height = struct.unpack_from('<I', dm, 160)[0]
+            struct.pack_into('<I', dm, 156, height)
+            struct.pack_into('<I', dm, 160, width)
+            struct.pack_into('<I', dm, 164, orientation)
+
+            fields = struct.unpack_from('<I', dm, 40)[0]
+            fields |= self._DM_DISPLAYORIENTATION
+            struct.pack_into('<I', dm, 40, fields)
+
+            # ── 第一次嘗試：寫入登錄檔（需管理員）──
+            result = ctypes.windll.user32.ChangeDisplaySettingsExW(
+                device_name, dm, None,
+                self._CDS_UPDATEREGISTRY,
+                None
+            )
+
+            if result == self._DISP_CHANGE_SUCCESSFUL:
+                self.logger.info(
+                    f"✅ 螢幕旋轉成功（已寫入登錄檔）: {device_name} → orientation={orientation}"
+                )
+                return True
+
+            # ── 第二次嘗試：暫時旋轉（不需管理員，旗標=0）──
+            self.logger.warning(
+                f"⚠️ 寫入登錄檔失敗（錯誤碼: {result}），改用暫時旋轉模式（旗標=0）"
+            )
+
+            # 重新取得 DEVMODE（第一次呼叫可能已修改緩衝區狀態）
+            dm2 = self._get_devmode(device_name)
+            if dm2 is None:
+                self.logger.error("❌ 無法重新取得 DEVMODE")
+                return False
+
+            # 再次設定旋轉參數
+            w2 = struct.unpack_from('<I', dm2, 156)[0]
+            h2 = struct.unpack_from('<I', dm2, 160)[0]
+            struct.pack_into('<I', dm2, 156, h2)
+            struct.pack_into('<I', dm2, 160, w2)
+            struct.pack_into('<I', dm2, 164, orientation)
+            fields2 = struct.unpack_from('<I', dm2, 40)[0]
+            fields2 |= self._DM_DISPLAYORIENTATION
+            struct.pack_into('<I', dm2, 40, fields2)
+
+            result2 = ctypes.windll.user32.ChangeDisplaySettingsExW(
+                device_name, dm2, None,
+                0,   # ✅ 旗標=0：暫時套用，不寫入登錄檔，不需管理員
+                None
+            )
+
+            if result2 == self._DISP_CHANGE_SUCCESSFUL:
+                self.logger.info(
+                    f"✅ 螢幕暫時旋轉成功（不寫入登錄檔）: {device_name} → orientation={orientation}"
+                )
+                return True
+            else:
+                self.logger.error(f"❌ 螢幕旋轉失敗，錯誤碼: {result2}")
+                return False
+
+        except Exception as e:
+            self.logger.error(f"❌ 螢幕旋轉例外: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
+            return False
+
+
+    def save_original_and_apply(self, device_name: str, target_orientation: str) -> bool:
+        """
+        儲存原始方向並套用新方向
+        
+        Args:
+            device_name: 副螢幕裝置名稱
+            target_orientation: "landscape" 或 "portrait"
+        
+        Returns:
+            bool: 是否成功
+        """
+        self._device_name = device_name
+
+        # 儲存原始方向（只儲存一次）
+        if self._original_orientation is None:
+            dm = self._get_devmode(device_name)
+            if dm is not None:
+                self._original_orientation = self._get_orientation_from_devmode(dm)
+                self.logger.info(f"📌 已儲存原始螢幕方向: {self._original_orientation}")
+
+        # 套用目標方向
+        target_dmdo = (self.DMDO_90 if target_orientation == "portrait"
+                       else self.DMDO_DEFAULT)
+        success = self._set_orientation(device_name, target_dmdo)
+        if success:
+            self._current_orientation = target_dmdo
+        return success
+
+    def apply_orientation(self, target_orientation: str) -> bool:
+        """
+        套用方向（使用已儲存的裝置名稱）
+        
+        Args:
+            target_orientation: "landscape" 或 "portrait"
+        """
+        if self._device_name is None:
+            self.logger.warning("⚠️ 尚未設定裝置名稱，無法旋轉")
+            return False
+        target_dmdo = (self.DMDO_90 if target_orientation == "portrait"
+                       else self.DMDO_DEFAULT)
+        if self._current_orientation == target_dmdo:
+            return True  # 已是目標方向，不需重複旋轉
+        success = self._set_orientation(self._device_name, target_dmdo)
+        if success:
+            self._current_orientation = target_dmdo
+        return success
+
+    def restore_original(self) -> bool:
+        """恢復到程式啟動前的原始方向"""
+        if self._original_orientation is None or self._device_name is None:
+            self.logger.info("ℹ️ 無需恢復（未儲存原始方向）")
+            return True
+        success = self._set_orientation(self._device_name, self._original_orientation)
+        if success:
+            self.logger.info(f"✅ 已恢復原始螢幕方向: {self._original_orientation}")
+        return success
+
+    @staticmethod
+    def get_secondary_device_name() -> str:
+        """
+        取得副螢幕的裝置名稱（例如 "\\\\.\\DISPLAY2"）
+        
+        Returns:
+            str: 裝置名稱，找不到時回傳空字串
+        """
+        import ctypes, struct
+        try:
+            for i in range(10):
+                dd = ctypes.create_string_buffer(840)
+                ctypes.cast(dd, ctypes.POINTER(ctypes.c_uint32))[0] = 840
+                if not ctypes.windll.user32.EnumDisplayDevicesW(None, i, dd, 0):
+                    break
+                # StateFlags 在偏移量 8
+                state_flags = struct.unpack_from('<I', dd, 8)[0]
+                DISPLAY_DEVICE_ATTACHED_TO_DESKTOP = 0x00000001
+                DISPLAY_DEVICE_PRIMARY_DEVICE       = 0x00000004
+                is_attached = bool(state_flags & DISPLAY_DEVICE_ATTACHED_TO_DESKTOP)
+                is_primary  = bool(state_flags & DISPLAY_DEVICE_PRIMARY_DEVICE)
+                if is_attached and not is_primary:
+                    # DeviceName 從偏移量 0 開始，長度 32 個 wchar
+                    device_name = dd[0:64].decode('utf-16-le').rstrip('\x00')
+                    return device_name
+        except Exception:
+            pass
+        return ""
+# ============================================================
+# 🆕 繪畫成品展示視窗（副螢幕全螢幕）
+# ============================================================
+class ArtworkDisplayWindow(QWidget):
+    """
+    在副螢幕全螢幕展示當前繪畫成品（不影響 LSL 記錄）
+    直接從 all_strokes 繪製，不需匯出 PNG
+    """
+
+    def __init__(self, all_strokes: list, canvas_width: int, canvas_height: int,
+                 secondary_screen, toolbar_size: int, orientation: str,
+                 is_single_screen: bool = False,
+                 on_close_callback=None,
+                 parent=None):
+        super().__init__(parent)
+        self.all_strokes = all_strokes
+        self.canvas_width = canvas_width
+        self.canvas_height = canvas_height
+        self.secondary_screen = secondary_screen
+        self.toolbar_size = toolbar_size
+        self.orientation = orientation
+        self.is_single_screen = is_single_screen
+        self.on_close_callback = on_close_callback
+        self.logger = logging.getLogger('ArtworkDisplayWindow')
+
+        self.setStyleSheet("background-color: white;")
+
+        if self.is_single_screen:
+            self.setWindowTitle("🖼️ 繪畫成品預覽")
+            self.setWindowFlags(
+                Qt.Window
+                | Qt.WindowTitleHint
+                | Qt.WindowCloseButtonHint
+                | Qt.WindowStaysOnTopHint
+            )
+
+            screen_w = secondary_screen.width()
+            screen_h = secondary_screen.height()
+            win_w = int(screen_w * 0.50)
+            win_h = int(screen_h * 0.60)
+            x = secondary_screen.x() + 10
+            y = secondary_screen.y() + (screen_h - win_h) // 2
+            self.resize(win_w, win_h)
+            self.move(x, y)
+            self.show()
+            self.raise_()            # ✅ 確保視窗在最前面
+            self.activateWindow()    # ✅ 確保視窗可接收滑鼠/鍵盤事件
+            self.logger.info(
+                f"🖼️ 成品展示視窗已開啟（單螢幕普通視窗）: {win_w}x{win_h} at ({x},{y})"
+            )
+
+        else:
+            # 延伸模式：副螢幕全螢幕 + 無邊框 + 置頂
+            self.setWindowFlags(
+                Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
+            )
+            self.move(secondary_screen.x(), secondary_screen.y())
+            self.showFullScreen()
+            self.logger.info("🖼️ 成品展示視窗已開啟（延伸模式全螢幕）")
+
+    def keyPressEvent(self, event):
+        """ESC 鍵關閉展示視窗（延伸模式用）"""
+        if event.key() == Qt.Key_Escape:
+            self.close()
+        else:
+            super().keyPressEvent(event)
+
+    def closeEvent(self, event):
+        """關閉時通知 callback"""
+        if self.on_close_callback is not None:
+            try:
+                self.on_close_callback()
+            except Exception:
+                pass
+        event.accept()
+
+    def paintEvent(self, event):
+        """繪製所有筆劃（支援直向 Qt 旋轉）"""
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.fillRect(self.rect(), QColor('white'))
+
+        if self.orientation == "portrait":
+            # ✅ 直向模式：與 WacomDrawingCanvas.paintEvent 相同的旋轉邏輯
+            # 工具列在左側（不旋轉），畫布區域旋轉 -90°
+            # translate(toolbar_size, H) → rotate(-90)
+            h = self.height()
+            painter.translate(self.toolbar_size, h)
+            painter.rotate(-90)
+        else:
+            # 橫向：工具列在左側，畫布向右偏移
+            painter.translate(self.toolbar_size, 0)
+
+        active_strokes = [s for s in self.all_strokes if not s.get('is_deleted', False)]
+
+        for stroke in active_strokes:
+            points = stroke['points']
+            if not points:
+                continue
+
+            stroke_color = QColor(stroke.get('color', '#000000'))
+            pen = QPen(stroke_color, 2)
+            painter.setPen(pen)
+
+            for i in range(len(points) - 1):
+                x1, y1, p1 = points[i]
+                x2, y2, p2 = points[i + 1]
+                pen.setWidthF(1 + p1 * 5)
+                painter.setPen(pen)
+                painter.drawLine(int(x1), int(y1), int(x2), int(y2))
+
 
 class ExperimenterControlWindow(QWidget):
     """實驗者控制視窗（顯示在主螢幕）"""
@@ -221,7 +542,26 @@ class WacomDrawingCanvas(QWidget):
         self.eraser_tool = EraserTool(radius=10.0)
         self.current_eraser_points = []
         self.next_stroke_id = 0
-        
+        # 🆕 螢幕旋轉管理器
+        self.screen_rotation_manager = ScreenRotationManager(self.logger)
+        if self.is_extended_mode:
+            device_name = ScreenRotationManager.get_secondary_device_name()
+            if device_name:
+                self.logger.info(f"🖥️ 副螢幕裝置名稱: {device_name}")
+                self.screen_rotation_manager._device_name = device_name
+                # 儲存原始方向（尚未旋轉）
+                dm = self.screen_rotation_manager._get_devmode(device_name)
+                if dm:
+                    self.screen_rotation_manager._original_orientation = \
+                        self.screen_rotation_manager._get_orientation_from_devmode(dm)
+                    self.logger.info(
+                        f"📌 原始螢幕方向已儲存: "
+                        f"{self.screen_rotation_manager._original_orientation}"
+                    )
+
+        # 🆕 成品展示視窗參考
+        self._artwork_display_window = None
+
         # 🆕🆕🆕 修改：第一次取消則退出程式
         if not self.get_subject_info():
             self.logger.critical("❌ 第一次未輸入受試者資訊，程式退出")
@@ -393,27 +733,60 @@ class WacomDrawingCanvas(QWidget):
         self.logger.info("=" * 60)
         
         return primary_screen, secondary_screen, is_extended_mode
-    
-    def _setup_screen_size(self):
-        """🆕 根據螢幕模式設置畫布尺寸"""
-        toolbar_height = 50
-        
+    def _wait_for_screen_rotation(self, expected_orientation: str, timeout: float = 3.0) -> bool:
+        """
+        ✅ Wacom 不支援軟體旋轉，改用 Qt 畫面旋轉
+        此方法只更新 secondary_screen 資訊，不等待實體旋轉
+        """
+        from PyQt5.QtWidgets import QDesktopWidget
+        from PyQt5.QtCore import QCoreApplication
+
+        QCoreApplication.processEvents()
+
+        desktop = QDesktopWidget()
+        if desktop.screenCount() > 1:
+            self.secondary_screen = desktop.screenGeometry(1)
+
+        self.logger.info(
+            f"📐 螢幕資訊更新（{expected_orientation}，Qt旋轉模式）: "
+            f"{self.secondary_screen.width()}x{self.secondary_screen.height()}"
+        )
+        return True
+
+
+    def _setup_screen_size(self, orientation: str = "landscape"):
+        """根據螢幕模式和方向設置畫布尺寸（Qt旋轉版）"""
+        toolbar_size = 120
+
         if self.is_extended_mode:
-            # 延伸模式：使用副螢幕完整尺寸（全螢幕，不保留工作列空間）
-            canvas_width = self.secondary_screen.width()
-            canvas_height = self.secondary_screen.height() - toolbar_height  # 減去工具列高度
-            self.logger.info(f"📐 畫布尺寸（延伸模式 - 副螢幕全螢幕）: {canvas_width} x {canvas_height}")
+            screen_w = self.secondary_screen.width()
+            screen_h = self.secondary_screen.height()
+
+            if orientation == "portrait":
+                # ✅ 螢幕不旋轉，Qt 畫面旋轉 -90°
+                # 實體螢幕橫向 (screen_w x screen_h)，例如 1920x1080
+                # 旋轉後邏輯畫布：寬=screen_h，高=screen_w-toolbar
+                canvas_width  = screen_h                  # 邏輯寬 = 實體短邊
+                canvas_height = screen_w - toolbar_size   # 邏輯高 = 實體長邊 - toolbar
+            else:
+                canvas_width  = screen_w - toolbar_size
+                canvas_height = screen_h
+
+            self.logger.info(
+                f"📐 畫布尺寸（延伸模式 - {orientation}）: {canvas_width} x {canvas_height}"
+            )
         else:
-            # 單螢幕模式：使用主螢幕可用區域（保留工作列空間）
             desktop = QDesktopWidget()
             screen_rect = desktop.availableGeometry()
-            canvas_width = screen_rect.width()
-            canvas_height = screen_rect.height() - toolbar_height
+            canvas_width  = screen_rect.width() - toolbar_size
+            canvas_height = screen_rect.height()
             self.logger.info(f"📐 畫布尺寸（單螢幕模式）: {canvas_width} x {canvas_height}")
-        
-        # 更新配置
-        self.config.canvas_width = canvas_width
+
+        self.config.canvas_width  = canvas_width
         self.config.canvas_height = canvas_height
+        self._current_toolbar_size = toolbar_size
+
+
         
     def _setup_window(self):
         """🆕 根據螢幕模式設置視窗屬性（延伸模式時副螢幕全螢幕）"""
@@ -496,7 +869,9 @@ class WacomDrawingCanvas(QWidget):
     
     def get_drawing_type(self):
         """獲取繪畫類型（根據模式決定對話框位置）"""
-        dialog = DrawingTypeDialog(self.drawing_counter, self.workspace, self)
+        dialog = DrawingTypeDialog(self.drawing_counter, self.workspace,
+                           canvas_ref=None, parent=self)  # 🆕 初次不傳 canvas_ref
+
         
         if self.is_extended_mode:
             dialog_width = dialog.width()
@@ -520,6 +895,17 @@ class WacomDrawingCanvas(QWidget):
             
             self.logger.info(f"✅ 繪畫資訊: {self.current_drawing_info}")
             self.logger.info(f"✅ 測試配置: {self.current_test_config.display_name}")
+            
+            # ✅ 在顯示指導語前先旋轉螢幕，並等待完成
+            if self.is_extended_mode and self.screen_rotation_manager._device_name:
+                orientation = self.current_test_config.screen_orientation
+                self.logger.info(f"🖥️ 預先套用螢幕方向（指導語前）: {orientation}")
+                self.screen_rotation_manager.save_original_and_apply(
+                    self.screen_rotation_manager._device_name, orientation
+                )
+                self._wait_for_screen_rotation(orientation)  # ✅ 確保指導語顯示在正確方向
+
+            
             if not self._show_instructions(self.current_test_config):
                 self.logger.info("❌ 指導語確認取消，程式退出")
                 return False
@@ -650,9 +1036,14 @@ class WacomDrawingCanvas(QWidget):
             )
             
             if self.is_extended_mode:
-                # 延伸模式：全螢幕顯示在副螢幕
+                # ✅ 設定旋轉角度（必須在 showFullScreen 前呼叫）
+                orientation = test_config.screen_orientation
+                if orientation == "portrait":
+                    dialog.set_rotation(-90)
                 dialog.move(self.secondary_screen.x(), self.secondary_screen.y())
-                dialog.showFullScreen()
+                dialog.showFullScreen()  # ✅ 內部會自動根據 rotation 重建 UI
+
+
             else:
                 # 單螢幕模式：最大化視窗
                 dialog.showMaximized()
@@ -685,7 +1076,9 @@ class WacomDrawingCanvas(QWidget):
                 self.lsl.pause_recording()
                 self.logger.info("⏸️ LSL 記錄已暫停（等待用戶選擇）")
 
-            dialog = DrawingTypeDialog(next_drawing_counter, self.workspace, self)
+            dialog = DrawingTypeDialog(next_drawing_counter, self.workspace,
+                           canvas_ref=self, parent=self)  # 🆕 傳入 canvas_ref
+
             
             if self.is_extended_mode:
                 # 延伸模式：將對話框移動到主螢幕中央
@@ -727,7 +1120,18 @@ class WacomDrawingCanvas(QWidget):
             
             self.logger.info(f"✅ 新繪畫資訊: {self.current_drawing_info}")
             self.logger.info(f"✅ 測試配置: {self.current_test_config.display_name}")
-            
+            # 🆕 6.3 套用新測驗的螢幕方向
+            if self.is_extended_mode:
+                new_orientation = self.current_test_config.screen_orientation
+                self.logger.info(f"🖥️ 套用螢幕方向: {new_orientation}")
+                self.screen_rotation_manager.apply_orientation(new_orientation)
+                # ✅ 等待旋轉完成並自動更新 secondary_screen
+                self._wait_for_screen_rotation(new_orientation)
+                self._setup_screen_size(new_orientation)
+                self._rebuild_toolbar(new_orientation)
+
+
+
             # 6.5 顯示指導語（若有設定）
             if not self._show_instructions(self.current_test_config):
                 self.logger.info("❌ 指導語確認取消，恢復當前繪畫")
@@ -862,7 +1266,10 @@ class WacomDrawingCanvas(QWidget):
 
     def _setup_toolbar(self):
         """設置工具欄（修改版：垂直佈局，左側邊置中，放大圖示）"""
-        
+        # 🆕 初始化工具列方向記錄（預設橫向）
+        self._toolbar_orientation = "landscape"
+        self._toolbar_size = 120
+
         # 🆕 使用垂直佈局（VBoxLayout）
         toolbar_layout = QVBoxLayout()
         toolbar_layout.setSpacing(20)  # 增加按鈕間距
@@ -953,7 +1360,159 @@ class WacomDrawingCanvas(QWidget):
         main_layout.setSpacing(0)
         
         self.setLayout(main_layout)
+        # 🆕 套用第一個測驗的螢幕方向
+        if self.current_test_config is not None and self.is_extended_mode:
+            orientation = self.current_test_config.screen_orientation
+            if orientation == "portrait":
+                # ✅ Qt 旋轉模式：不需要旋轉螢幕，直接重建工具列和畫布尺寸
+                self._wait_for_screen_rotation(orientation)  # 只更新 secondary_screen 資訊
+                self._setup_screen_size(orientation)
+                self._rebuild_toolbar(orientation)
 
+
+
+
+    def _rebuild_toolbar(self, orientation: str = "landscape"):
+        """
+        🆕 根據方向重建工具列佈局
+        
+        橫向：工具列在左側（垂直排列）
+        直向：工具列在上側（水平排列）
+        """
+        try:
+            self.logger.info(f"🔧 重建工具列: orientation={orientation}")
+
+            # 1. 移除舊的 layout（Qt 不能直接刪除 layout，需透過 QWidget 容器）
+            old_layout = self.layout()
+            if old_layout is not None:
+                # 清空舊 layout 中的所有 widget
+                while old_layout.count():
+                    item = old_layout.takeAt(0)
+                    if item.widget():
+                        item.widget().setParent(None)
+                # 刪除舊 layout
+                import sip
+                sip.delete(old_layout)
+
+            # 2. 重新建立按鈕（保留原有 signal 連接）
+            button_size = 80
+
+            self.pen_button = QPushButton("🖊️")
+            self.pen_button.setFixedSize(button_size, button_size)
+            self.pen_button.setToolTip("筆")
+            self.pen_button.clicked.connect(lambda: self.switch_tool(ToolType.PEN))
+
+            self.eraser_button = QPushButton("🧈")
+            self.eraser_button.setFixedSize(button_size, button_size)
+            self.eraser_button.setToolTip("橡皮擦")
+            self.eraser_button.clicked.connect(lambda: self.switch_tool(ToolType.ERASER))
+
+            self.color_button = QPushButton("🎨")
+            self.color_button.setFixedSize(button_size, button_size)
+            self.color_button.setToolTip("選擇顏色")
+            self.color_button.clicked.connect(self.choose_color)
+
+            # 3. 根據方向建立不同的工具列
+            if orientation == "portrait":
+                # ✅ 直向：工具列仍在左側（垂直排列），畫布區域用 paintEvent 旋轉
+                # 不改變 layout 結構，只記錄方向供 tabletEvent/paintEvent 使用
+                toolbar_layout = QVBoxLayout()
+                toolbar_layout.setSpacing(20)
+                toolbar_layout.setContentsMargins(10, 0, 10, 0)
+                toolbar_layout.addStretch()
+                toolbar_layout.addWidget(self.pen_button,    alignment=Qt.AlignCenter)
+                toolbar_layout.addWidget(self.eraser_button, alignment=Qt.AlignCenter)
+                toolbar_layout.addWidget(self.color_button,  alignment=Qt.AlignCenter)
+                toolbar_layout.addStretch()
+
+                toolbar_widget = QWidget()
+                toolbar_widget.setLayout(toolbar_layout)
+                toolbar_widget.setFixedWidth(120)
+                toolbar_widget.setStyleSheet("""
+                    QWidget {
+                        background-color: #f5f5f5;
+                        border-right: 2px solid #cccccc;
+                    }
+                """)
+
+                main_layout = QHBoxLayout()
+                main_layout.addWidget(toolbar_widget)   # 左側工具列（不變）
+                main_layout.addStretch()
+                main_layout.setContentsMargins(0, 0, 0, 0)
+                main_layout.setSpacing(0)
+
+                # ✅ 記錄為 portrait，供 tabletEvent/paintEvent 使用
+                self._toolbar_orientation = "portrait"
+                self._toolbar_size = 120
+
+
+            else:
+                # ── 橫向：工具列在左側（垂直排列）──
+                toolbar_layout = QVBoxLayout()
+                toolbar_layout.setSpacing(20)
+                toolbar_layout.setContentsMargins(10, 0, 10, 0)
+                toolbar_layout.addStretch()
+                toolbar_layout.addWidget(self.pen_button,    alignment=Qt.AlignCenter)
+                toolbar_layout.addWidget(self.eraser_button, alignment=Qt.AlignCenter)
+                toolbar_layout.addWidget(self.color_button,  alignment=Qt.AlignCenter)
+                toolbar_layout.addStretch()
+
+                toolbar_widget = QWidget()
+                toolbar_widget.setLayout(toolbar_layout)
+                toolbar_widget.setFixedWidth(120)
+                toolbar_widget.setStyleSheet("""
+                    QWidget {
+                        background-color: #f5f5f5;
+                        border-right: 2px solid #cccccc;
+                    }
+                """)
+
+                main_layout = QHBoxLayout()
+                main_layout.addWidget(toolbar_widget)   # 左側工具列
+                main_layout.addStretch()
+                main_layout.setContentsMargins(0, 0, 0, 0)
+                main_layout.setSpacing(0)
+
+                self._toolbar_orientation = "landscape"
+                self._toolbar_size = 120
+
+            self.setLayout(main_layout)
+
+            # 4. 更新按鈕樣式和可見性
+            self._apply_tool_button_styles()
+            self._update_color_button_visibility()
+            self._update_cursor()
+
+            self.logger.info(f"✅ 工具列重建完成: {orientation}")
+
+        except Exception as e:
+            self.logger.error(f"❌ 重建工具列失敗: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
+
+    def _apply_tool_button_styles(self):
+        """🆕 根據當前工具套用按鈕樣式"""
+        pen_active   = (self.current_tool == ToolType.PEN)
+        eraser_active = (self.current_tool == ToolType.ERASER)
+
+        self.pen_button.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {'lightblue' if pen_active else 'white'};
+                font-size: 40px;
+                border-radius: 10px;
+                border: 2px solid {'#2196F3' if pen_active else '#cccccc'};
+            }}
+            QPushButton:hover {{ background-color: #81D4FA; }}
+        """)
+        self.eraser_button.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {'lightblue' if eraser_active else 'white'};
+                font-size: 40px;
+                border-radius: 10px;
+                border: 2px solid {'#2196F3' if eraser_active else '#cccccc'};
+            }}
+            QPushButton:hover {{ background-color: #f0f0f0; }}
+        """)
 
     def _update_color_button_visibility(self):
         """🆕 根據測試配置更新顏色按鈕可見性"""
@@ -1146,6 +1705,53 @@ class WacomDrawingCanvas(QWidget):
             self.logger.error(f"❌ 創建控制視窗失敗: {e}")
             import traceback
             self.logger.error(traceback.format_exc())
+
+    def show_artwork_display(self):
+        try:
+            if self._artwork_display_window is not None:
+                self._artwork_display_window.close()
+                self._artwork_display_window = None
+
+            orientation = (self.current_test_config.screen_orientation
+                        if self.current_test_config else "landscape")
+            toolbar_size = getattr(self, '_toolbar_size', 120)
+
+            self._artwork_display_window = ArtworkDisplayWindow(
+                all_strokes=self.all_strokes,
+                canvas_width=self.config.canvas_width,
+                canvas_height=self.config.canvas_height,
+                secondary_screen=self.secondary_screen,
+                toolbar_size=toolbar_size,
+                orientation=orientation,
+                is_single_screen=not self.is_extended_mode,
+                on_close_callback=self._on_artwork_window_closed,
+                parent=self          # ✅ 改為 self，不再是 None
+            )
+
+            self.logger.info("🖼️ 繪畫成品展示視窗已開啟")
+            return self._artwork_display_window
+
+        except Exception as e:
+            self.logger.error(f"❌ 開啟成品展示視窗失敗: {e}")
+            return None
+
+    def _on_artwork_window_closed(self):
+        """🆕 展示視窗被外部關閉（例如 ESC）時的處理"""
+        self._artwork_display_window = None
+        self.logger.info("🖼️ 展示視窗已被外部關閉，通知對話框恢復狀態")
+        # 注意：此時無法直接存取 DrawingTypeDialog，
+        # 但 hide_artwork_display() 已將 _artwork_display_window 設為 None
+        # DrawingTypeDialog 的 _toggle_artwork 下次被呼叫時會正確處理
+
+    def hide_artwork_display(self):
+        """🆕 關閉繪畫成品展示視窗"""
+        if self._artwork_display_window is not None:
+            # 暫時移除 callback 避免循環呼叫
+            self._artwork_display_window.on_close_callback = None
+            self._artwork_display_window.close()
+            self._artwork_display_window = None
+            self.logger.info("❌ 繪畫成品展示視窗已關閉")
+
 
     def _finish_current_drawing(self):
         """完成當前繪畫的保存工作（🆕 添加配置到 metadata）"""
@@ -1792,7 +2398,13 @@ class WacomDrawingCanvas(QWidget):
             # 🆕🆕🆕 關閉控制視窗
             if self.control_window:
                 self.control_window.close()
-            
+            # 🆕 恢復副螢幕原始方向
+            if self.is_extended_mode:
+                self.screen_rotation_manager.restore_original()
+
+            # 🆕 關閉成品展示視窗（若有）
+            self.hide_artwork_display()
+
             # 完成最後一次繪畫
             self._finish_current_drawing()
             
@@ -1942,33 +2554,71 @@ class WacomDrawingCanvas(QWidget):
             x_pixel = event.x()
             y_pixel = event.y()
             
-            # 🆕🆕🆕 修改：工具欄在左側
-            toolbar_width = 120  # 工具欄寬度
-            canvas_width = self.config.canvas_width
+            canvas_width  = self.config.canvas_width
             canvas_height = self.config.canvas_height
-            
-            # 🆕🆕🆕 檢查是否在工具欄區域（左側 120 像素）
-            if x_pixel < toolbar_width:
-                self.logger.debug(f"⏭️ 點在工具欄區域，跳過墨水處理: ({x_pixel}, {y_pixel})")
-                
-                if self.pen_is_touching or self.current_stroke_points:
-                    self.logger.info("🔚 筆進入工具欄區域，強制結束當前筆劃")
-                    self._force_end_current_stroke()
-                
-                event.accept()
-                return
-            
-            # 🆕🆕🆕 調整座標（減去工具欄寬度）
-            adjusted_x = x_pixel - toolbar_width
-            
-            # 🆕🆕🆕 歸一化座標
-            x_normalized = adjusted_x / canvas_width
-            y_normalized = y_pixel / canvas_height
-            
+            toolbar_orientation = getattr(self, '_toolbar_orientation', 'landscape')
+            toolbar_size        = getattr(self, '_toolbar_size', 120)
+
+            if toolbar_orientation == "portrait":
+                # ✅ 直向模式座標轉換
+                # 實體螢幕橫向 (W x H)，畫布旋轉 -90°
+                # paintEvent 的旋轉：translate(toolbar_size, H) → rotate(-90)
+                #
+                # 旋轉後邏輯座標對應關係：
+                #   邏輯X = H - y_pixel          （實體Y軸反轉）
+                #   邏輯Y = x_pixel - toolbar_size（實體X軸減去toolbar）
+                #
+                # 工具列區域：x_pixel < toolbar_size（實體左側）
+
+                h = self.height()  # 實體螢幕高（短邊），例如 1080
+
+                # 工具列區域判斷（實體左側 = 邏輯上側）
+                if x_pixel < toolbar_size:
+                    self.logger.debug(
+                        f"⏭️ 點在工具欄區域（直向，實體左側），跳過: ({x_pixel}, {y_pixel})"
+                    )
+                    if self.pen_is_touching or self.current_stroke_points:
+                        self._force_end_current_stroke()
+                    event.accept()
+                    return
+
+                # ✅ 座標轉換：實體 → 邏輯直向
+                # 對應 paintEvent 的 translate(toolbar_size, h) + rotate(-90)
+                logical_x = h - y_pixel                    # 邏輯X = H - 實體Y
+                logical_y = x_pixel - toolbar_size         # 邏輯Y = 實體X - toolbar
+
+                # 邊界檢查
+                if logical_x < 0 or logical_x > canvas_width:
+                    event.accept()
+                    return
+                if logical_y < 0 or logical_y > canvas_height:
+                    event.accept()
+                    return
+
+                adjusted_x   = logical_x
+                adjusted_y   = logical_y
+                x_normalized = adjusted_x / canvas_width
+                y_normalized = adjusted_y / canvas_height
+
+            else:
+                # 橫向：工具列在左側，x < toolbar_size 為工具列區域
+                if x_pixel < toolbar_size:
+                    self.logger.debug(f"⏭️ 點在工具欄區域（左側），跳過: ({x_pixel}, {y_pixel})")
+                    if self.pen_is_touching or self.current_stroke_points:
+                        self._force_end_current_stroke()
+                    event.accept()
+                    return
+                adjusted_x   = x_pixel - toolbar_size
+                adjusted_y   = y_pixel
+                x_normalized = adjusted_x / canvas_width
+                y_normalized = adjusted_y / canvas_height
+
+
             if self.current_tool == ToolType.PEN:
-                self._handle_pen_input(adjusted_x, y_pixel, x_normalized, y_normalized, current_pressure, event)
+                self._handle_pen_input(adjusted_x, adjusted_y, x_normalized, y_normalized,
+                                    current_pressure, event)
             elif self.current_tool == ToolType.ERASER:
-                self._handle_eraser_input(adjusted_x, y_pixel, current_pressure, event)
+                self._handle_eraser_input(adjusted_x, adjusted_y, current_pressure, event)
             
             # 🆕🆕🆕 橡皮擦模式下不在這裡觸發 update()（由 _handle_eraser_input 控制）
             if self.current_tool != ToolType.ERASER:
@@ -1987,13 +2637,42 @@ class WacomDrawingCanvas(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         
-        # 🆕🆕🆕 修改：左側工具欄偏移（從 toolbar_height 改為 toolbar_width）
-        toolbar_width = 120  # 工具欄寬度
-        painter.translate(toolbar_width, 0)  # 向右偏移 120 像素
-        
-        # 🆕🆕🆕 優化 1：只繪製可見區域的筆劃
-        visible_rect = event.rect()
-        visible_rect.translate(-toolbar_width, 0)  # 🆕 調整工具欄偏移
+        toolbar_orientation = getattr(self, '_toolbar_orientation', 'landscape')
+        toolbar_size        = getattr(self, '_toolbar_size', 120)
+
+        if toolbar_orientation == "portrait":
+            # ✅ 直向模式：
+            # - 工具列在左側（x < toolbar_size），不旋轉
+            # - 畫布區域（x >= toolbar_size）旋轉 -90°
+            #
+            # 實體螢幕橫向 (W x H)，例如 1920x1080
+            # 畫布邏輯尺寸：canvas_width=H=1080, canvas_height=W-toolbar=1800
+            #
+            # 旋轉原點設在畫布區域的左上角 (toolbar_size, 0)
+            # 旋轉 -90° 後：
+            #   原點移到 (toolbar_size, H)
+            #   新X軸 = 原Y軸（向上）
+            #   新Y軸 = 原X軸（向右）
+
+            w = self.width()    # 實體螢幕寬，例如 1920
+            h = self.height()   # 實體螢幕高，例如 1080
+
+            # 先平移到畫布區域左下角，再旋轉
+            painter.translate(toolbar_size, h)
+            painter.rotate(-90)
+            # 旋轉後，(0,0) 對應實體 (toolbar_size, h)
+            # 旋轉後座標系中：
+            #   x 方向 = 實體 y 減少方向（向上）
+            #   y 方向 = 實體 x 增加方向（向右）
+
+            visible_rect = event.rect()
+        else:
+            painter.translate(toolbar_size, 0)
+            visible_rect = event.rect()
+            visible_rect.translate(-toolbar_size, 0)
+
+
+
         
         # 🆕🆕🆕 優化 2：預先過濾未刪除的筆劃（提前定義，避免後續未定義錯誤）
         active_strokes = [s for s in self.all_strokes if not s.get('is_deleted', False)]

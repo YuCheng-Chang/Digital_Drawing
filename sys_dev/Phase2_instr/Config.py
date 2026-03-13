@@ -57,6 +57,7 @@ class DrawingTestConfig:
     display_name: str
     enabled: bool = True
     order: int = 1
+    screen_orientation: str = "landscape"  # 🆕 "landscape" 或 "portrait"
     toolbar: ToolbarConfig = field(default_factory=ToolbarConfig)
     constraints: DrawingConstraints = field(default_factory=DrawingConstraints)
     instructions: InstructionConfig = field(default_factory=InstructionConfig)
@@ -94,6 +95,8 @@ class WorkspaceConfig:
                     'display_name': test.display_name,
                     'enabled': test.enabled,
                     'order': test.order,
+                    'screen_orientation': test.screen_orientation,
+
                     'toolbar': {
                         'pen_enabled': test.toolbar.pen_enabled,
                         'eraser_enabled': test.toolbar.eraser_enabled,
@@ -156,6 +159,7 @@ class WorkspaceConfig:
                 display_name=test_data['display_name'],
                 enabled=test_data.get('enabled', True),
                 order=test_data.get('order', 1),
+                screen_orientation=test_data.get('screen_orientation', 'landscape'), 
                 toolbar=ToolbarConfig(
                     pen_enabled=toolbar_data.get('pen_enabled', True),
                     eraser_enabled=toolbar_data.get('eraser_enabled', True),
