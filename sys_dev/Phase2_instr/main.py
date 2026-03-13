@@ -1,6 +1,7 @@
 # main.py
 import ctypes          # 🆕 用於 Windows 螢幕旋轉 API
 import ctypes.wintypes # 🆕
+import sip
 from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QHBoxLayout, QVBoxLayout, QMessageBox, QDesktopWidget, QLabel,QColorDialog, QDialog
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPainter, QPen, QColor, QTabletEvent,QPixmap, QCursor, QBrush
@@ -1391,7 +1392,7 @@ class WacomDrawingCanvas(QWidget):
                     if item.widget():
                         item.widget().setParent(None)
                 # 刪除舊 layout
-                import sip
+                
                 sip.delete(old_layout)
 
             # 2. 重新建立按鈕（保留原有 signal 連接）

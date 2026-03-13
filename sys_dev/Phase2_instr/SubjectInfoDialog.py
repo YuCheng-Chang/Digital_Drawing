@@ -1,5 +1,6 @@
 # SubjectInfoDialog.py (修改版)
 import hashlib
+import sip
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                           QLineEdit, QPushButton, QComboBox, QMessageBox, 
                           QDateEdit, QFormLayout, QListWidget, QListWidgetItem, QWidget,QFileDialog)
@@ -1549,7 +1550,7 @@ class ParticipantInstructionDialog(QDialog):
                 item = old_layout.takeAt(0)
                 if item.widget():
                     item.widget().setParent(None)
-            import sip
+            
             sip.delete(old_layout)
 
         new_layout = QVBoxLayout()
