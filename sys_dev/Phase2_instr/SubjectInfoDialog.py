@@ -1,6 +1,6 @@
 # SubjectInfoDialog.py (修改版)
 import hashlib
-import sip
+from PyQt5 import sip
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                           QLineEdit, QPushButton, QComboBox, QMessageBox, 
                           QDateEdit, QFormLayout, QListWidget, QListWidgetItem, QWidget,QFileDialog)
@@ -1345,7 +1345,7 @@ class DrawingTypeDialog(QDialog):
         layout.addRow("繪畫類型:", self.drawing_type_combo)
         
         # 🆕 展示繪畫成品按鈕（藍色，獨立一行）
-        self.show_artwork_button = QPushButton("🖼️ 展示繪畫成品")
+        self.show_artwork_button = QPushButton("展示繪畫成品")
         self.show_artwork_button.setStyleSheet("""
             QPushButton {
                 background-color: #2196F3;
@@ -1401,13 +1401,13 @@ class DrawingTypeDialog(QDialog):
             self.ok_button.setEnabled(False)
             self.cancel_button.setEnabled(False)
             self._artwork_showing = True
-            logger.info("🖼️ 展示繪畫成品")
+            logger.info("展示繪畫成品")
         else:
             # ── 關閉成品 ──
             if self.canvas_ref is not None:
                 self.canvas_ref.hide_artwork_display()
             self._artwork_window = None
-            self.show_artwork_button.setText("🖼️ 展示繪畫成品")
+            self.show_artwork_button.setText("展示繪畫成品")
             self.ok_button.setEnabled(True)
             self.cancel_button.setEnabled(True)
             self._artwork_showing = False

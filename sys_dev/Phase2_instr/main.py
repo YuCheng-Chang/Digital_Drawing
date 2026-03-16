@@ -1,7 +1,7 @@
 # main.py
 import ctypes          # 🆕 用於 Windows 螢幕旋轉 API
 import ctypes.wintypes # 🆕
-import sip
+from PyQt5 import sip
 from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QHBoxLayout, QVBoxLayout, QMessageBox, QDesktopWidget, QLabel,QColorDialog, QDialog
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPainter, QPen, QColor, QTabletEvent,QPixmap, QCursor, QBrush
@@ -353,39 +353,39 @@ class ExperimenterControlWindow(QWidget):
         self.is_extended_mode = is_extended_mode
         self.logger = logging.getLogger('ExperimenterControlWindow')
         
+        # ✅ 碼表相關
+        self._elapsed_seconds = 0          # 已計時秒數
+        self._timer = QTimer(self)
+        self._timer.setInterval(1000)      # 每 1 秒觸發一次
+        self._timer.timeout.connect(self._on_timer_tick)
+        
         self._setup_ui()
         self._setup_window_position()
     
     def _setup_ui(self):
-        """設置 UI (放大版)"""
+        """設置 UI"""
         self.setWindowTitle("實驗者控制面板")
-        # 🆕 修改：加大視窗尺寸 (原 400x230 -> 600x400)
-        self.setFixedSize(600, 400)
+        self.setFixedSize(600, 460)  # ✅ 移除重置按鈕後高度從 500 改回 460
         
-        # 主佈局
         main_layout = QVBoxLayout()
-        main_layout.setSpacing(25)  # 增加間距
-        main_layout.setContentsMargins(30, 30, 30, 30)  # 增加邊距
+        main_layout.setSpacing(20)
+        main_layout.setContentsMargins(30, 30, 30, 30)
         
         # === 資訊顯示區域 ===
         info_layout = QVBoxLayout()
-        info_layout.setSpacing(15) # 資訊標籤間距
+        info_layout.setSpacing(15)
         
-        # 🆕 修改：統一加大字體樣式
         label_style = "font-size: 24px; font-weight: bold;"
-        value_style = "font-size: 24px; font-weight: bold; color: #2196F3;"
-        
-        # 受試者編號標籤
+        # value_style = "font-size: 24px; font-weight: bold; color: #2196F3;"
+        value_style = "font-size: 24px; font-weight: bold;"
         self.subject_label = QLabel("受試者編號: N/A")
         self.subject_label.setStyleSheet(label_style)
         info_layout.addWidget(self.subject_label)
         
-        # 當前繪畫編號標籤
         self.drawing_number_label = QLabel("當前繪畫編號: N/A")
         self.drawing_number_label.setStyleSheet(value_style)
         info_layout.addWidget(self.drawing_number_label)
         
-        # 當前繪畫類型標籤
         self.drawing_type_label = QLabel("當前繪畫類型: N/A")
         self.drawing_type_label.setStyleSheet(label_style)
         info_layout.addWidget(self.drawing_type_label)
@@ -393,20 +393,47 @@ class ExperimenterControlWindow(QWidget):
         main_layout.addLayout(info_layout)
         
         # 分隔線
-        line = QWidget()
-        line.setFixedHeight(4) # 加粗分隔線
-        line.setStyleSheet("background-color: #cccccc;")
-        main_layout.addWidget(line)
+        line1 = QWidget()
+        line1.setFixedHeight(4)
+        line1.setStyleSheet("background-color: #cccccc;")
+        main_layout.addWidget(line1)
+        
+        # ✅ === 碼表區域 ===
+        stopwatch_layout = QHBoxLayout()
+        stopwatch_layout.setSpacing(15)
+
+        # 碼表標籤
+        stopwatch_title = QLabel("作畫用時:")
+        stopwatch_title.setStyleSheet("font-size: 24px; font-weight: bold;")
+        stopwatch_layout.addWidget(stopwatch_title)
+
+        # 碼表顯示（分鐘:秒）
+        self.stopwatch_label = QLabel("00:00")
+        self.stopwatch_label.setStyleSheet("""
+            font-size: 36px;
+            font-weight: bold;
+            color: #000000;
+            font-family: monospace;
+        """)
+        stopwatch_layout.addWidget(self.stopwatch_label)
+
+        stopwatch_layout.addStretch()
+        main_layout.addLayout(stopwatch_layout)
+
+        
+        # 分隔線
+        line2 = QWidget()
+        line2.setFixedHeight(4)
+        line2.setStyleSheet("background-color: #cccccc;")
+        main_layout.addWidget(line2)
         
         # === 控制按鈕區域 ===
         button_layout = QHBoxLayout()
         button_layout.setSpacing(20)
         
-        # 🆕 修改：按鈕樣式 (高度 50->80, 字體 16->24)
         btn_height = 80
         btn_font_size = "24px"
         
-        # 新繪畫按鈕
         self.new_drawing_button = QPushButton("➕ 新繪畫")
         self.new_drawing_button.setFixedHeight(btn_height)
         self.new_drawing_button.setStyleSheet(f"""
@@ -424,7 +451,6 @@ class ExperimenterControlWindow(QWidget):
         self.new_drawing_button.clicked.connect(self.on_new_drawing_clicked)
         button_layout.addWidget(self.new_drawing_button)
         
-        # 關閉程式按鈕
         self.close_button = QPushButton("❌ 關閉程式")
         self.close_button.setFixedHeight(btn_height)
         self.close_button.setStyleSheet(f"""
@@ -446,44 +472,69 @@ class ExperimenterControlWindow(QWidget):
         
         self.setLayout(main_layout)
 
+    # ✅ === 碼表方法 ===
 
-    
+    def start_stopwatch(self):
+        """啟動碼表（重置並開始計時）"""
+        self._elapsed_seconds = 0
+        self.stopwatch_label.setText("00:00")
+        self._timer.start()
+        self.logger.info("⏱ 碼表已啟動")
+
+    def stop_stopwatch(self):
+        """停止碼表"""
+        self._timer.stop()
+        self.logger.info(f"⏱ 碼表已停止: {self.stopwatch_label.text()}")
+
+    def reset_stopwatch(self):
+        """重置碼表（停止並歸零）"""
+        self._timer.stop()
+        self._elapsed_seconds = 0
+        self.stopwatch_label.setText("00:00")
+        self.logger.info("⏱ 碼表已重置")
+
+    def _on_timer_tick(self):
+        """每秒觸發，更新碼表顯示"""
+        self._elapsed_seconds += 1
+        minutes = self._elapsed_seconds // 60
+        seconds = self._elapsed_seconds % 60
+        self.stopwatch_label.setText(f"{minutes:02d}:{seconds:02d}")
+
+    # ✅ === 原有方法（不變）===
+
     def _setup_window_position(self):
         """設置視窗位置（主螢幕右上角）"""
         if self.is_extended_mode:
-            # 延伸模式：放在主螢幕右上角
             x = self.primary_screen.x() + self.primary_screen.width() - self.width() - 20
             y = self.primary_screen.y() + 20
             self.move(x, y)
             self.logger.info(f"✅ 控制視窗已設置在主螢幕右上角: ({x}, {y})")
         else:
-            # 單螢幕模式：放在螢幕右上角
             x = self.primary_screen.width() - self.width() - 20
             y = 20
             self.move(x, y)
             self.logger.info(f"✅ 控制視窗已設置在螢幕右上角: ({x}, {y})")
         
-        # 設置視窗置頂
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
     
     def update_info(self, subject_id, drawing_number, drawing_type):
         """更新顯示的資訊"""
         self.subject_label.setText(f"受試者編號: {subject_id}")
-        self.drawing_number_label.setText(f"當前繪畫編號: {drawing_number}")  # 🆕
+        self.drawing_number_label.setText(f"當前繪畫編號: {drawing_number}")
         self.drawing_type_label.setText(f"當前繪畫類型: {drawing_type}")
         self.logger.info(f"📝 控制面板資訊已更新: {subject_id}, #{drawing_number}, {drawing_type}")
-
     
     def on_new_drawing_clicked(self):
         """新繪畫按鈕點擊事件"""
         self.logger.info("🎨 點擊新繪畫按鈕")
+        self.stop_stopwatch()          # ✅ 按下按鈕時先暫停碼表
         self.canvas.start_new_drawing()
+
     
     def on_close_clicked(self):
         """關閉程式按鈕點擊事件"""
         self.logger.info("❌ 點擊關閉程式按鈕")
         
-        # 確認對話框
         reply = QMessageBox.question(
             self,
             '確認關閉',
@@ -494,12 +545,13 @@ class ExperimenterControlWindow(QWidget):
         
         if reply == QMessageBox.Yes:
             self.logger.info("✅ 用戶確認關閉程式")
-            self.canvas.close()  # 關閉畫布視窗
-            self.close()  # 關閉控制視窗
+            self.canvas.close()
+            self.close()
     
     def closeEvent(self, event):
         """控制視窗關閉時同時關閉畫布"""
         self.logger.info("🔚 控制視窗關閉")
+        self._timer.stop()  # ✅ 關閉時停止計時器
         if self.canvas:
             self.canvas.close()
         event.accept()
@@ -1092,7 +1144,6 @@ class WacomDrawingCanvas(QWidget):
             else:
                 # 單螢幕模式：使用預設位置（螢幕中央）
                 self.logger.info("🎨 繪畫類型對話框顯示在螢幕中央（單螢幕模式）")
-            
             # 3. 只有當用戶點擊「確定」時才執行後續操作
             if dialog.exec_() != dialog.Accepted:
                 # ✅ 3a. 用戶取消 → 恢復記錄，繼續當前繪畫
@@ -1100,7 +1151,12 @@ class WacomDrawingCanvas(QWidget):
                     self.lsl.resume_recording()
                     self.logger.info("▶️ 用戶取消，LSL 記錄已恢復")
                 self.logger.info("❌ 用戶取消新繪畫，繼續當前繪畫")
+                # ✅ 用戶取消 → 恢復碼表繼續計時
+                if self.control_window:
+                    self.control_window._timer.start()
+                    self.logger.info("▶️ 用戶取消，碼表已恢復計時")
                 return
+
             
             # 4. 用戶確認，現在才開始終止當前繪畫
             self.logger.info("✅ 用戶確認新繪畫，開始終止當前繪畫")
@@ -1159,9 +1215,10 @@ class WacomDrawingCanvas(QWidget):
             # 🆕🆕🆕 更新控制視窗資訊
             if self.control_window:
                 subject_id = self.subject_info.get('subject_id', 'N/A')
-                drawing_number = self.drawing_counter  # 🆕 添加繪畫編號
+                drawing_number = self.drawing_counter
                 drawing_type = self.current_drawing_info.get('drawing_type', 'N/A')
-                self.control_window.update_info(subject_id, drawing_number, drawing_type)  # 🆕 傳遞三個參數
+                self.control_window.update_info(subject_id, drawing_number, drawing_type)
+                self.control_window.start_stopwatch()  # ✅ 新繪畫開始時重啟碼表
             
         except Exception as e:
             self.logger.error(f"❌ 開始新繪畫失敗: {e}")
@@ -1699,6 +1756,7 @@ class WacomDrawingCanvas(QWidget):
             
             # 顯示控制視窗
             self.control_window.show()
+            self.control_window.start_stopwatch() # ✅ 程式啟動時立即開始計時
             
             self.logger.info("✅ 實驗者控制視窗已創建並顯示")
             
