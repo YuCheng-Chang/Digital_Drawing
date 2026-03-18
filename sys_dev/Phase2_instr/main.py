@@ -1208,7 +1208,7 @@ class WacomDrawingCanvas(QWidget):
             self._reset_ink_system()
                     
             # 🆕🆕🆕 11. 更新顏色按鈕可見性
-            self._update_color_button_visibility()
+            self._update_toolbar_buttons_visibility()
                     
             self.logger.info(f"✅ 新繪畫已開始 (繪畫編號: {self.drawing_counter})")
             
@@ -1394,7 +1394,7 @@ class WacomDrawingCanvas(QWidget):
         toolbar_layout.addWidget(self.color_button, alignment=Qt.AlignCenter)
         
         # 🆕🆕🆕 根據繪畫類型決定是否顯示顏色按鈕
-        self._update_color_button_visibility()
+        self._update_toolbar_buttons_visibility()
         
         # 🆕 添加底部彈性空間（讓按鈕垂直置中）
         toolbar_layout.addStretch()
@@ -1538,7 +1538,7 @@ class WacomDrawingCanvas(QWidget):
 
             # 4. 更新按鈕樣式和可見性
             self._apply_tool_button_styles()
-            self._update_color_button_visibility()
+            self._update_toolbar_buttons_visibility()
             self._update_cursor()
 
             self.logger.info(f"✅ 工具列重建完成: {orientation}")
@@ -1572,16 +1572,37 @@ class WacomDrawingCanvas(QWidget):
             QPushButton:hover {{ background-color: #f0f0f0; }}
         """)
 
-    def _update_color_button_visibility(self):
-        """🆕 根據測試配置更新顏色按鈕可見性"""
+    def _update_toolbar_buttons_visibility(self):
+        """根據測試配置更新所有工具列按鈕的可見性（pen / eraser / color）"""
         if self.current_test_config is None:
+            # 無配置時全部隱藏，顏色重置黑色
+            self.pen_button.hide()
+            self.eraser_button.hide()
             self.color_button.hide()
             self.current_color = QColor('#000000')
             self.current_color_name = '#000000'
             return
-        
-        # 🆕 根據 Workspace 配置決定是否顯示
-        if self.current_test_config.toolbar.color_picker_enabled:
+
+        toolbar = self.current_test_config.toolbar
+
+        # ── 筆按鈕 ──
+        if toolbar.pen_enabled:
+            self.pen_button.show()
+            self.logger.info(f"✅ 筆按鈕已顯示（{self.current_test_config.drawing_type}）")
+        else:
+            self.pen_button.hide()
+            self.logger.info(f"⚠️ 筆按鈕已隱藏（{self.current_test_config.drawing_type}）")
+
+        # ── 橡皮擦按鈕 ──
+        if toolbar.eraser_enabled:
+            self.eraser_button.show()
+            self.logger.info(f"✅ 橡皮擦按鈕已顯示（{self.current_test_config.drawing_type}）")
+        else:
+            self.eraser_button.hide()
+            self.logger.info(f"⚠️ 橡皮擦按鈕已隱藏（{self.current_test_config.drawing_type}）")
+
+        # ── 顏色按鈕 ──
+        if toolbar.color_picker_enabled:
             self.color_button.show()
             self._update_color_button_style()
             self.logger.info(f"✅ 顏色按鈕已顯示（{self.current_test_config.drawing_type}）")
@@ -1591,6 +1612,13 @@ class WacomDrawingCanvas(QWidget):
             self.current_color_name = '#000000'
             self.logger.info(f"⚠️ 顏色按鈕已隱藏（{self.current_test_config.drawing_type}）")
 
+        # ── 若當前工具被停用，自動切換到可用工具 ──
+        if self.current_tool == ToolType.ERASER and not toolbar.eraser_enabled:
+            if toolbar.pen_enabled:
+                self.current_tool = ToolType.PEN
+                self._apply_tool_button_styles()
+                self._update_cursor()
+                self.logger.info("⚠️ 橡皮擦被停用，自動切換回筆工具")
 
 
     def _update_color_button_style(self):
@@ -1882,7 +1910,8 @@ class WacomDrawingCanvas(QWidget):
         
         # 🆕🆕🆕 更新游標（使用黑色）
         self._update_cursor()
-        
+        # 根據新測試配置更新工具列可見性
+        self._update_toolbar_buttons_visibility()
         # 重繪畫布
         self.update()
         
@@ -2002,32 +2031,18 @@ class WacomDrawingCanvas(QWidget):
 
     
     def _export_current_canvas(self):
-        """匯出當前畫布（保存到兩個位置）"""
+        """匯出當前畫布（保存到 output_dir 根目錄）"""
         try:
             if hasattr(self, 'lsl') and self.lsl is not None:
-                # 🆕 方案 1：保存到 session_id 子目錄（原有路徑）
-                output_dir_with_session = os.path.join(
-                    self.lsl.data_recorder.output_dir, 
-                    self.lsl.data_recorder.session_id
+                canvas_image_path = os.path.join(
+                    str(self.lsl.data_recorder.output_dir),
+                    "canvas_drawing.png"
                 )
-                os.makedirs(output_dir_with_session, exist_ok=True)
                 
-                canvas_image_path_1 = os.path.join(output_dir_with_session, "canvas_drawing.png")
-                
-                # 🆕 方案 2：保存到 output_dir 根目錄（新增路徑）
-                canvas_image_path_2 = os.path.join(self.lsl.data_recorder.output_dir, "canvas_drawing.png")
-                
-                # 保存到第一個位置
-                if self.export_canvas_image(canvas_image_path_1):
-                    self.logger.info(f"✅ 畫布已保存（位置 1）: {canvas_image_path_1}")
+                if self.export_canvas_image(canvas_image_path):
+                    self.logger.info(f"✅ 畫布已保存: {canvas_image_path}")
                 else:
-                    self.logger.warning("⚠️ 畫布匯出失敗（位置 1）")
-                
-                # 🆕 保存到第二個位置
-                if self.export_canvas_image(canvas_image_path_2):
-                    self.logger.info(f"✅ 畫布已保存（位置 2）: {canvas_image_path_2}")
-                else:
-                    self.logger.warning("⚠️ 畫布匯出失敗（位置 2）")
+                    self.logger.warning("⚠️ 畫布匯出失敗")
                     
         except Exception as e:
             self.logger.error(f"❌ 匯出畫布失敗: {e}")
@@ -2040,7 +2055,15 @@ class WacomDrawingCanvas(QWidget):
             to_tool = tool_type.value
             
             self.logger.info(f"🔄 準備切換工具: {from_tool} → {to_tool}")
-            
+            # ── 防護：若目標工具被 Workspace 停用，忽略此次切換 ──
+            if self.current_test_config is not None:
+                if tool_type == ToolType.PEN and not self.current_test_config.toolbar.pen_enabled:
+                    self.logger.warning("⚠️ 筆工具已被停用，忽略切換")
+                    return
+                if tool_type == ToolType.ERASER and not self.current_test_config.toolbar.eraser_enabled:
+                    self.logger.warning("⚠️ 橡皮擦已被停用，忽略切換")
+                    return
+
             # 🆕🆕🆕 關鍵修復：切換工具前強制完成當前筆劃
             if self.current_tool == ToolType.PEN and tool_type != ToolType.PEN:
                 # 從筆切換到其他工具

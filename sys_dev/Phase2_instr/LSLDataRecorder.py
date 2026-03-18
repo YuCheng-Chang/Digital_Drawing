@@ -397,7 +397,7 @@ class LSLDataRecorder:
         Returns:
             Dict: 儲存的檔案路徑
         """
-        session_dir = self.output_dir / self.session_id
+        session_dir = self.output_dir
         session_dir.mkdir(parents=True, exist_ok=True)
         
         saved_files = {}
