@@ -1735,7 +1735,7 @@ class WacomDrawingCanvas(QWidget):
         view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         view.setFrameShape(view.NoFrame)
-        view.setStyleSheet("background-color: rgba(0,0,0,128); border: none;")
+        view.setStyleSheet("QGraphicsView { background-color: rgba(0,0,0,128); border: none; }")
 
         outer_dialog = QDialog(self)
         outer_dialog.setWindowFlags(
@@ -1803,31 +1803,42 @@ class WacomDrawingCanvas(QWidget):
         outer_dialog.exec_()
         return selected_color[0]
 
-
     def _show_palette_color_picker(self) -> QColor:
-        """顯示調色盤選擇器（支援直向旋轉）"""
-        from PyQt5.QtWidgets import (QDialog, QGridLayout, QPushButton,
-                                    QVBoxLayout, QLabel, QWidget)
+        """
+        顯示調色盤選擇器。
+        橫向：普通 QDialog（有原生標題列）。
+        直向：自訂標題列的浮動視窗，非全螢幕，可看到畫布背景。
+
+        直向視窗設計：
+        - 整個視窗是一個橫向矩形（實體座標），但視覺上是直向
+        - 自訂標題列（RotatedLabel）在實體左側（視覺頂部）
+        - 關閉按鈕（紅色 ✕）在視覺右上角
+        - 顏色 grid 和取消按鈕在標題列右側（視覺下方）
+
+        ================================================================
+        【確認後的座標轉換規則】（由4角診斷點實測得出）
+
+            視覺右上角 = 實體 (0,   0)       ← 紅點
+            視覺右下角 = 實體 (w,   h)附近   ← 綠點
+            視覺左上角 = 實體 (0,   h)       ← 藍點
+
+            轉換公式：
+            phys_x = visual_y                          （視覺 Y → 實體 X，直接對應）
+            phys_y = win_visual_w - visual_x - size    （視覺 X → 實體 Y，需鏡射）
+
+            視覺靠右（visual_x 大）→ phys_y 小（靠實體 Y=0 端）
+            視覺靠左（visual_x 小）→ phys_y 大（靠實體 Y=max 端）
+        ================================================================
+        """
+        from PyQt5.QtWidgets import (QDialog, QPushButton, QLabel, QWidget,
+                                    QDesktopWidget, QVBoxLayout, QGridLayout,
+                                    QApplication)
+        from PyQt5.QtGui import (QColor as _QColor, QPainter, QFont,
+                                QPen, QBrush)
+        from PyQt5.QtCore import QRectF
 
         orientation = getattr(self, '_toolbar_orientation', 'landscape')
-
-        # ── 建立調色盤內容 Widget ──
-        content_widget = QWidget()
-        content_widget.setStyleSheet("background-color: white;")
-
-        main_layout = QVBoxLayout(content_widget)
-        main_layout.setContentsMargins(30, 30, 30, 30)
-        main_layout.setSpacing(15)
-
-        title = QLabel("請選擇顏色:")
-        title.setStyleSheet("font-size: 20px; font-weight: bold;")
-        main_layout.addWidget(title)
-
-        grid_layout = QGridLayout()
-        grid_layout.setSpacing(10)
-
-        palette = self.current_test_config.toolbar.color_palette
-        selected_color = [None]
+        is_portrait = (orientation == "portrait")
 
         # ── 決定顯示幾色、幾欄 ──
         mode = self.current_test_config.toolbar.color_picker_mode
@@ -1838,64 +1849,75 @@ class WacomDrawingCanvas(QWidget):
         else:  # PALETTE_24
             max_colors, cols = 24, 6
 
-        # ── 建立顏色按鈕 ──
-        # dialog 用列表存放，讓閉包能存取
-        dialog_ref = [None]
+        palette = self.current_test_config.toolbar.color_palette
+        selected_color = [None]
 
-        def on_color_selected(color_hex):
-            selected_color[0] = QColor(color_hex)
-            if dialog_ref[0]:
-                dialog_ref[0].accept()
-
-        for i, color_hex in enumerate(palette[:max_colors]):
-            btn = QPushButton()
-            btn.setFixedSize(60, 60)
-            btn.setStyleSheet(f"""
-                QPushButton {{
-                    background-color: {color_hex};
-                    border: 2px solid #666666;
-                    border-radius: 5px;
-                }}
-                QPushButton:hover {{
-                    border: 3px solid #333333;
-                }}
-            """)
-            btn.clicked.connect(lambda checked, c=color_hex: on_color_selected(c))
-            grid_layout.addWidget(btn, i // cols, i % cols)
-
-        main_layout.addLayout(grid_layout)
-
-        # ── 取消按鈕 ──
-        cancel_btn = QPushButton("取消")
-        cancel_btn.setStyleSheet("""
-            QPushButton {
-                font-size: 18px;
-                min-height: 40px;
-                border-radius: 5px;
-            }
-        """)
-        cancel_btn.clicked.connect(lambda: dialog_ref[0].reject() if dialog_ref[0] else None)
-        main_layout.addWidget(cancel_btn)
-
-        # ── 根據方向決定顯示方式 ──
-        if orientation == "portrait":
-            # 直向：先固定尺寸，再包裝旋轉
-            content_widget.adjustSize()
-            content_widget.setFixedSize(content_widget.sizeHint())
-
-            outer_dialog = self._wrap_dialog_with_rotation(content_widget)
-            dialog_ref[0] = outer_dialog
-
-            if outer_dialog.exec_() == QDialog.Accepted and selected_color[0]:
-                return selected_color[0]
-            return QColor()
-
-        else:
-            # 橫向：直接顯示普通對話框
+        # ============================================================
+        # 橫向模式：普通 QDialog（不變）
+        # ============================================================
+        if not is_portrait:
             dialog = QDialog(self)
             dialog.setWindowTitle("選擇顏色")
             dialog.setModal(True)
-            dialog_ref[0] = dialog
+
+            content_widget = QWidget()
+            content_widget.setObjectName("paletteContentWidget")
+            content_widget.setStyleSheet(
+                "QWidget#paletteContentWidget { background-color: white; }"
+            )
+            main_layout = QVBoxLayout(content_widget)
+            main_layout.setContentsMargins(30, 30, 30, 30)
+            main_layout.setSpacing(15)
+
+            title = QLabel("請選擇顏色:")
+            title.setStyleSheet("font-size: 20px; font-weight: bold;")
+            main_layout.addWidget(title)
+
+            grid_layout = QGridLayout()
+            grid_layout.setSpacing(10)
+
+            def on_color_selected_landscape(color_hex):
+                selected_color[0] = _QColor(color_hex)
+                dialog.accept()
+
+            for i, color_hex in enumerate(palette[:max_colors]):
+                btn = QPushButton()
+                btn.setFixedSize(60, 60)
+                _lighter = _QColor(color_hex).lighter(115).name()
+                btn.setStyleSheet(f"""
+                    QPushButton {{
+                        background-color: {color_hex};
+                        border: 2px solid #666666;
+                        border-radius: 5px;
+                    }}
+                    QPushButton:hover {{
+                        background-color: {_lighter};
+                        border: 4px solid #000000;
+                    }}
+                    QPushButton:pressed {{
+                        background-color: {color_hex};
+                        border: 4px solid #FF0000;
+                    }}
+                """)
+                btn.clicked.connect(
+                    lambda checked, c=color_hex: on_color_selected_landscape(c)
+                )
+                grid_layout.addWidget(btn, i // cols, i % cols)
+
+            main_layout.addLayout(grid_layout)
+
+            cancel_btn = QPushButton("取消")
+            cancel_btn.setStyleSheet("""
+                QPushButton {
+                    font-size: 18px; min-height: 40px;
+                    border-radius: 5px; font-weight: bold;
+                    border: 1px solid #cccccc;
+                }
+                QPushButton:hover { background-color: #e0e0e0; }
+                QPushButton:pressed { background-color: #b0b0b0; }
+            """)
+            cancel_btn.clicked.connect(dialog.reject)
+            main_layout.addWidget(cancel_btn)
 
             layout = QVBoxLayout(dialog)
             layout.addWidget(content_widget)
@@ -1904,7 +1926,287 @@ class WacomDrawingCanvas(QWidget):
                 return selected_color[0]
             return QColor()
 
+        # ============================================================
+        # 直向模式：自訂標題列的浮動視窗
+        # ============================================================
 
+        # ── 旋轉文字 Label ──
+        class RotatedLabel(QWidget):
+            def __init__(self, text, font_size=20, bold=True,
+                        text_color='#ffffff', parent=None):
+                super().__init__(parent)
+                self._text       = text
+                self._font_size  = font_size
+                self._bold       = bold
+                self._text_color = text_color
+
+            def paintEvent(self, event):
+                painter = QPainter(self)
+                painter.setRenderHint(QPainter.Antialiasing)
+                painter.setRenderHint(QPainter.TextAntialiasing)
+                font = QFont()
+                font.setPixelSize(self._font_size)
+                font.setBold(self._bold)
+                painter.setFont(font)
+                painter.setPen(_QColor(self._text_color))
+                cx = self.width()  / 2
+                cy = self.height() / 2
+                painter.translate(cx, cy)
+                painter.rotate(-90)
+                text_rect = QRectF(-cy, -cx, self.height(), self.width())
+                painter.drawText(text_rect, Qt.AlignCenter, self._text)
+                painter.end()
+
+        # ── 旋轉文字 Button ──
+        class RotatedButton(QPushButton):
+            def __init__(self, text, font_size=18,
+                        bg_color='#f8f8f8', hover_color='#e0e0e0',
+                        pressed_color='#b0b0b0', border_color='#cccccc',
+                        text_color='#222222', border_radius=8, parent=None):
+                super().__init__(parent)
+                self._label_text    = text
+                self._font_size     = font_size
+                self._bg_color      = bg_color
+                self._hover_color   = hover_color
+                self._pressed_color = pressed_color
+                self._border_color  = border_color
+                self._text_color    = text_color
+                self._border_radius = border_radius
+                self.setMouseTracking(True)
+
+            def paintEvent(self, event):
+                painter = QPainter(self)
+                painter.setRenderHint(QPainter.Antialiasing)
+                painter.setRenderHint(QPainter.TextAntialiasing)
+                w, h, r = self.width(), self.height(), self._border_radius
+
+                if self.isDown():
+                    bg     = _QColor(self._pressed_color)
+                    border = _QColor('#999999')
+                elif self.underMouse():
+                    bg     = _QColor(self._hover_color)
+                    border = _QColor('#999999')
+                else:
+                    bg     = _QColor(self._bg_color)
+                    border = _QColor(self._border_color)
+
+                painter.setPen(QPen(border, 2))
+                painter.setBrush(QBrush(bg))
+                painter.drawRoundedRect(2, 2, w - 4, h - 4, r, r)
+
+                font = QFont()
+                font.setPixelSize(self._font_size)
+                font.setBold(True)
+                painter.setFont(font)
+                painter.setPen(_QColor(self._text_color))
+                painter.translate(w / 2, h / 2)
+                painter.rotate(-90)
+                painter.drawText(QRectF(-h/2, -w/2, h, w), Qt.AlignCenter,
+                                self._label_text)
+                painter.end()
+
+        # ── 紅色關閉按鈕（圓形 ✕）──
+        class CloseButton(QPushButton):
+            def __init__(self, size=36, parent=None):
+                super().__init__(parent)
+                self._size = size
+                self.setFixedSize(size, size)
+                self.setMouseTracking(True)
+
+            def paintEvent(self, event):
+                painter = QPainter(self)
+                painter.setRenderHint(QPainter.Antialiasing)
+                s = self._size
+
+                if self.isDown():
+                    bg = _QColor('#c0392b')
+                elif self.underMouse():
+                    bg = _QColor('#e74c3c')
+                else:
+                    bg = _QColor('#e74c3c')
+
+                painter.setPen(Qt.NoPen)
+                painter.setBrush(QBrush(bg))
+                painter.drawEllipse(2, 2, s - 4, s - 4)
+
+                pen = QPen(_QColor('white'), 2.5)
+                pen.setCapStyle(Qt.RoundCap)
+                painter.setPen(pen)
+                m = s * 0.28
+                painter.drawLine(int(m), int(m), int(s - m), int(s - m))
+                painter.drawLine(int(s - m), int(m), int(m), int(s - m))
+                painter.end()
+
+        # ── 螢幕資訊 ──
+        desktop = QDesktopWidget()
+        screen   = desktop.screenGeometry(1 if desktop.screenCount() > 1 else 0)
+        screen_x = screen.x()
+        screen_y = screen.y()
+        screen_w = screen.width()
+        screen_h = screen.height()
+
+        # ── 尺寸參數（視覺座標系定義）──
+        btn_size     = 70
+        btn_gap      = 10
+        padding      = 25
+        titlebar_h   = 48
+        titlebar_gap = 8
+        cancel_h     = 50
+        cancel_gap   = 15
+        close_size   = 36
+        corner_r     = 12
+
+        total_colors = min(len(palette), max_colors)
+        rows = (total_colors + cols - 1) // cols
+
+        # 視覺尺寸計算
+        content_visual_w = padding * 2 + cols * (btn_size + btn_gap) - btn_gap
+        content_visual_h = (padding * 2
+                            + rows * (btn_size + btn_gap) - btn_gap
+                            + cancel_gap + cancel_h)
+        win_visual_w = content_visual_w
+        win_visual_h = titlebar_h + titlebar_gap + content_visual_h
+
+        # 實體視窗尺寸（視覺旋轉90度）
+        phys_win_w = win_visual_h   # 實體寬 = 視覺高
+        phys_win_h = win_visual_w   # 實體高 = 視覺寬
+
+        win_x = screen_x + (screen_w - phys_win_w) // 2
+        win_y = screen_y + (screen_h - phys_win_h) // 2
+
+        # ── 建立浮動視窗 ──
+        outer_dialog = QDialog(self)
+        outer_dialog.setWindowFlags(
+            Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
+        )
+        outer_dialog.setModal(True)
+        outer_dialog.move(win_x, win_y)
+        outer_dialog.resize(phys_win_w, phys_win_h)
+        outer_dialog.setStyleSheet(f"""
+            QDialog {{
+                background-color: white;
+                border-radius: {corner_r}px;
+                border: 2px solid #aaaaaa;
+            }}
+        """)
+
+        # ── 標題列背景 ──
+        # 視覺頂部（visual_y=0, visual_h=titlebar_h）
+        # → 實體左側（phys_x=0, phys_w=titlebar_h），橫跨整個實體高度
+        titlebar_bg = QWidget(outer_dialog)
+        titlebar_bg.setGeometry(0, 0, titlebar_h, phys_win_h)
+        titlebar_bg.setStyleSheet(f"""
+            QWidget {{
+                background-color: #3a3a3a;
+                border-top-left-radius: {corner_r}px;
+                border-bottom-left-radius: {corner_r}px;
+            }}
+        """)
+
+        # ── 標題文字 ──
+        title_label = RotatedLabel(
+            "選擇顏色",
+            font_size=20, bold=True,
+            text_color='#ffffff',
+            parent=titlebar_bg
+        )
+        title_label.setGeometry(0, 0, titlebar_h, phys_win_h)
+
+        def on_color_selected_portrait(color_hex):
+            selected_color[0] = _QColor(color_hex)
+            outer_dialog.accept()
+
+        # ── 顏色按鈕 Grid ──
+        # 視覺座標 (vx, vy) → 實體座標：
+        #   phys_x = vy
+        #   phys_y = win_visual_w - vx - btn_size   （X 軸鏡射）
+        for i, color_hex in enumerate(palette[:max_colors]):
+            row_i = i // cols
+            col_i = i % cols
+
+            vx = padding + col_i * (btn_size + btn_gap)
+            vy = titlebar_h + titlebar_gap + padding + row_i * (btn_size + btn_gap)
+
+            phys_x = vy
+            phys_y = win_visual_w - vx - btn_size   # 鏡射
+
+            btn = QPushButton(outer_dialog)
+            btn.setGeometry(phys_x, phys_y, btn_size, btn_size)
+            _lighter = _QColor(color_hex).lighter(115).name()
+            btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {color_hex};
+                    border: 2px solid #555555;
+                    border-radius: 6px;
+                }}
+                QPushButton:hover {{
+                    background-color: {_lighter};
+                    border: 4px solid #000000;
+                }}
+                QPushButton:pressed {{
+                    background-color: {color_hex};
+                    border: 4px solid #FF0000;
+                }}
+            """)
+            btn.clicked.connect(
+                lambda checked, c=color_hex: on_color_selected_portrait(c)
+            )
+
+        # ── 取消按鈕 ──
+        # 視覺座標：
+        #   vx = padding（靠視覺左側）
+        #   vy = titlebar_h + titlebar_gap + padding + rows*(btn_size+btn_gap) + cancel_gap
+        #   vw = content_visual_w - padding*2
+        #   vh = cancel_h
+        # 實體座標：
+        #   phys_x = vy
+        #   phys_y = win_visual_w - vx - vw   （X 軸鏡射）
+        #   phys_w = vh（視覺高 → 實體寬）
+        #   phys_h = vw（視覺寬 → 實體高）
+        cancel_vy = (titlebar_h + titlebar_gap + padding
+                    + rows * (btn_size + btn_gap) + cancel_gap)
+        cancel_vx = padding
+        cancel_vw = content_visual_w - padding * 2
+        cancel_vh = cancel_h
+
+        cancel_btn = RotatedButton(
+            "取消",
+            font_size=18,
+            bg_color='#f8f8f8', hover_color='#e0e0e0',
+            pressed_color='#b0b0b0', border_color='#cccccc',
+            text_color='#222222', border_radius=8,
+            parent=outer_dialog
+        )
+        cancel_btn.setGeometry(
+            cancel_vy,                             # phys_x
+            win_visual_w - cancel_vx - cancel_vw,  # phys_y（鏡射）
+            cancel_vh,                             # phys_w
+            cancel_vw                              # phys_h
+        )
+        cancel_btn.clicked.connect(outer_dialog.reject)
+
+        # ── 關閉按鈕 ──
+        # 視覺右上角 = 實體 (phys_x≈0, phys_y=padding)
+        #   phys_x = (titlebar_h - close_size) // 2   （在標題列內垂直置中）
+        #   phys_y = padding                           （靠實體 Y=0 端 = 視覺右側）
+        close_btn = CloseButton(size=close_size, parent=outer_dialog)
+        close_btn.move(
+            (titlebar_h - close_size) // 2,   # phys_x：標題列內置中
+            padding                           # phys_y：靠實體 Y=0 = 視覺右上
+        )
+        close_btn.clicked.connect(outer_dialog.reject)
+        close_btn.raise_()
+
+        # ── 顯示視窗 ──
+        outer_dialog.show()
+        outer_dialog.raise_()
+        outer_dialog.activateWindow()
+
+        outer_dialog.exec_()
+
+        if selected_color[0] is not None:
+            return selected_color[0]
+        return QColor()
 
     def _create_control_window(self):
         """🆕 創建實驗者控制視窗"""

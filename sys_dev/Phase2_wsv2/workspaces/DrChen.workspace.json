@@ -11,12 +11,12 @@
       "display_name": "練習測試 (Practice)",
       "enabled": true,
       "order": 1,
-      "screen_orientation": "landscape",
+      "screen_orientation": "portrait",
       "toolbar": {
         "pen_enabled": true,
         "eraser_enabled": true,
         "color_picker_enabled": true,
-        "color_picker_mode": "palette_24",
+        "color_picker_mode": "palette_48",
         "color_palette": [
           "#000000",
           "#FFFFFF",
