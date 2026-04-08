@@ -206,11 +206,13 @@ class StrokeDetector:
 
     def force_reset_state(self) -> None:
         """
-        🆕🆕🆕 強制重置檢測器狀態（用於筆離開畫布的情況）
+        強制重置檢測器狀態（用於筆離開畫布的情況）
         
         與 reset_state() 的區別：
         - reset_state(): 完全重置，包括 stroke_id 歸零
         - force_reset_state(): 只重置當前筆劃狀態，保留 stroke_id
+        
+        修正：若當前沒有任何點，不消耗 stroke_id
         """
         try:
             self.logger.info(
@@ -218,17 +220,24 @@ class StrokeDetector:
                 f"current_stroke_id={self.current_stroke_id}, "
                 f"current_points={len(self.current_stroke_points)}"
             )
-            
-            # 只清空當前筆劃數據，不重置 stroke_id
-            self.current_stroke_points = []
-            self.current_state = StrokeState.IDLE
-            
-            self.logger.info(
-                f"✅ 狀態已重置為 IDLE，下一筆將使用 stroke_id={self.current_stroke_id}"
-            )
-            
+
+            if self.current_stroke_points:
+                # ✅ 有點：正常 finalize（stroke_id 會在內部遞增）
+                self.logger.info(
+                    f"📝 有 {len(self.current_stroke_points)} 個點，執行 finalize"
+                )
+                self.finalize_current_stroke()
+            else:
+                # ✅ 沒有點：只重置狀態，不消耗 stroke_id
+                self.current_state = StrokeState.IDLE
+                self.logger.info(
+                    f"⏭️ 無點，僅重置狀態，stroke_id 保持: {self.current_stroke_id}"
+                )
+
         except Exception as e:
             self.logger.error(f"❌ 強制重置狀態失敗: {e}")
+            self.current_state = StrokeState.IDLE  # 保底重置
+
 
 
     def get_completed_strokes(self) -> List[Dict[str, Any]]:

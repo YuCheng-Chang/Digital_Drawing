@@ -17,6 +17,7 @@ from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, asdict
 from datetime import datetime
 import numpy as np
+import re
 
 
 @dataclass
@@ -196,197 +197,229 @@ class LSLDataRecorder:
     
     def _clean_invalid_strokes_extended(self, markers: List[MarkerEvent], ink_samples: List[InkSample]) -> tuple:
         """
-        🆕 擴展版：支援兩種 invalid stroke 模式 + 去除重複的 stroke_start
+        擴展版：支援兩種 invalid stroke 模式 + 去除重複的 stroke_start
+        + 過濾 eraser event 中指向已刪除 stroke 的項目
         
         清理規則：
         1. stroke_start → tool_switch|from:pen|to:eraser
         2. stroke_start → tool_switch|from:pen|to:pen
-        3. 🆕 去除重複的 stroke_start_X 事件（保留第一個）
+        3. 去除重複的 stroke_start_X 事件（保留第一個）
+        4. 🆕 eraser_X|deleted_strokes 中若包含已被清理的 stroke_id，一併移除
         
-        ✅✅✅ 保留所有 recording_start 事件（不刪除）
-        
-        Args:
-            markers: 原始標記列表
-            ink_samples: 原始墨水點列表
-        
-        Returns:
-            tuple: (清理後的標記, 清理後的墨水點, 清理統計)
+        ✅ 保留所有 recording_start 事件（不刪除）
         """
+
         if not markers:
             return markers, ink_samples, {}
-        
-        self.logger.info("🧹 開始清理（擴展模式：pen→eraser、pen→pen + 去重）...")
-        
-        # ✅✅✅ 找到最後一個 recording_start 的時間戳
+
+        self.logger.info("🧹 開始清理（擴展模式：pen→eraser、pen→pen + 去重 + eraser過濾）...")
+
+        # ── 找到最後一個 recording_start 的時間戳 ──
         last_recording_start_time = None
         for marker in reversed(markers):
             if marker.marker_text == "recording_start":
                 last_recording_start_time = marker.timestamp
                 self.logger.info(f"✅ 找到最後一個 recording_start: {last_recording_start_time:.3f}")
                 break
-        
-        # 🆕🆕🆕 步驟 1：去除重複的 stroke_start
+
+        # ── 步驟 1：去除重複的 stroke_start ──
         deduplicated_markers = []
-        seen_stroke_starts = set()  # 記錄已經見過的 stroke_start_X
+        seen_stroke_starts = set()
         duplicate_count = 0
-        
+
         for marker in markers:
             marker_text = marker.marker_text
-            
-            # 檢查是否為 stroke_start
+
             if marker_text.startswith('stroke_start_'):
                 if marker_text in seen_stroke_starts:
-                    # 重複的 stroke_start，跳過
                     duplicate_count += 1
                     self.logger.info(f"🗑️ 移除重複的標記: {marker_text} at {marker.timestamp:.3f}")
                     continue
                 else:
-                    # 第一次見到，記錄並保留
                     seen_stroke_starts.add(marker_text)
-            
+
             deduplicated_markers.append(marker)
-        
+
         self.logger.info(f"✅ 去重完成，移除 {duplicate_count} 個重複的 stroke_start 標記")
-        
-        # 🆕🆕🆕 步驟 2：使用去重後的標記進行後續清理
+
+        # ── 步驟 2：使用去重後的標記進行後續清理 ──
         markers = deduplicated_markers
-        
-        # 按時間排序標記
+
         sorted_markers = sorted(enumerate(markers), key=lambda x: x[1].timestamp)
-        
-        invalid_time_ranges = []  # 儲存需要刪除的時間範圍 [(start_time, end_time, stroke_id, reason), ...]
+
+        invalid_time_ranges = []  # [(start_time, end_time, stroke_id, reason), ...]
         invalid_marker_indices = set()
-        
-        # 遍歷標記找出無效的 stroke_start 及其時間範圍
+        deleted_stroke_ids = set()  # 🆕 記錄所有被清理掉的 stroke_id
+
         for i in range(len(sorted_markers)):
             current_idx, current_marker = sorted_markers[i]
             current_text = current_marker.marker_text
-            
-            # ✅✅✅ 跳過 recording_start 事件（不刪除）
+
+            # 跳過 recording_start 事件（不刪除）
             if current_text == "recording_start":
                 continue
-            
-            # ✅✅✅ 如果有最後一個 recording_start，只清理它之後的數據
+
+            # 如果有最後一個 recording_start，只清理它之後的數據
             if last_recording_start_time is not None:
                 if current_marker.timestamp < last_recording_start_time:
-                    # 這個標記在最後一次 recording_start 之前，標記為刪除
                     invalid_marker_indices.add(current_idx)
                     continue
-            
+
             # 檢查當前標記是否為 stroke_start
             if current_text.startswith('stroke_start_'):
                 stroke_id = current_text.replace('stroke_start_', '')
                 stroke_start_time = current_marker.timestamp
-                
-                # 向前查找，找到下一個相關事件
+
                 found_invalid_tool_switch = False
                 invalid_reason = None
                 next_event_time = None
-                
-                # 查找後續事件
+
                 for j in range(i + 1, len(sorted_markers)):
                     next_idx, next_marker = sorted_markers[j]
                     next_text = next_marker.marker_text
-                    
-                    # 如果遇到 stroke_end，說明這是正常筆劃，跳出
+
+                    # 遇到 stroke_end，說明這是正常筆劃
                     if next_text == f'stroke_end_{stroke_id}':
                         break
-                    
-                    # 如果遇到另一個 stroke_start，記錄時間作為刪除範圍的結束點
+
+                    # 遇到另一個 stroke_start，記錄時間作為刪除範圍的結束點
                     if next_text.startswith('stroke_start_'):
                         next_event_time = next_marker.timestamp
                         break
-                    
-                    # 🆕🆕🆕 檢查兩種 invalid tool_switch 模式
+
+                    # 檢查兩種 invalid tool_switch 模式
                     if 'tool_switch' in next_text and 'from:pen' in next_text:
-                        # 模式 1: pen → eraser
                         if 'to:eraser' in next_text:
                             found_invalid_tool_switch = True
                             invalid_reason = 'pen→eraser'
-                            # 不要 break，繼續找下一個 stroke_start 作為結束點
-                        
-                        # 模式 2: pen → pen
                         elif 'to:pen' in next_text:
                             found_invalid_tool_switch = True
                             invalid_reason = 'pen→pen'
-                            # 不要 break，繼續找下一個 stroke_start 作為結束點
-                
-                # 如果找到 invalid tool_switch，記錄時間範圍
+
                 if found_invalid_tool_switch:
-                    # 如果沒有找到下一個 stroke_start，使用無窮大作為結束時間
                     if next_event_time is None:
                         next_event_time = float('inf')
-                    
+
                     self.logger.info(f"🗑️ 發現無效筆劃: {current_text} (原因: {invalid_reason})")
                     self.logger.info(f"   刪除時間範圍: {stroke_start_time:.3f} ~ {next_event_time:.3f}")
-                    
+
                     invalid_time_ranges.append((stroke_start_time, next_event_time, stroke_id, invalid_reason))
                     invalid_marker_indices.add(current_idx)
-        
-        # 清理標記（移除無效的 stroke_start 和 recording_start 之前的標記）
+                    deleted_stroke_ids.add(stroke_id)  # 🆕 加入黑名單
+
+        # ── 步驟 3：清理標記 ──
         cleaned_markers = []
         for i, marker in enumerate(markers):
             if i not in invalid_marker_indices:
                 cleaned_markers.append(marker)
-        
-        # ✅✅✅ 清理墨水點（基於時間範圍刪除 + 刪除 recording_start 之前的點）
+
+        # ── 步驟 4：🆕 過濾 eraser event 中指向已刪除 stroke 的項目 ──
+        eraser_filtered_count = 0
+        eraser_partial_count = 0
+        final_markers = []
+
+        for marker in cleaned_markers:
+            marker_text = marker.marker_text
+
+            # 只處理 eraser_X|deleted_strokes:[...] 格式
+            if 'deleted_strokes:' in marker_text:
+                match = re.search(r'deleted_strokes:\[([^\]]*)\]', marker_text)
+                if match and deleted_stroke_ids:
+                    ids_str = match.group(1)
+                    # 解析所有 stroke_id（可能是 "21, 22, 23" 或 "21,22,23"）
+                    all_ids = [s.strip() for s in ids_str.split(',') if s.strip()]
+                    valid_ids = [sid for sid in all_ids if sid not in deleted_stroke_ids]
+
+                    if not valid_ids:
+                        # 全部都是無效 stroke，整個 eraser event 移除
+                        eraser_filtered_count += 1
+                        self.logger.info(
+                            f"🗑️ 移除 eraser event（所有 stroke 均無效）: {marker_text}"
+                        )
+                        continue
+
+                    elif len(valid_ids) < len(all_ids):
+                        # 部分無效，重建 marker text
+                        removed = set(all_ids) - set(valid_ids)
+                        new_ids_str = ', '.join(valid_ids)
+                        new_text = re.sub(
+                            r'deleted_strokes:\[[^\]]*\]',
+                            f'deleted_strokes:[{new_ids_str}]',
+                            marker_text
+                        )
+                        eraser_partial_count += 1
+                        self.logger.info(
+                            f"✏️ 修正 eraser event，移除無效 stroke_id {removed}: "
+                            f"{marker_text} → {new_text}"
+                        )
+                        final_markers.append(MarkerEvent(marker.timestamp, new_text))
+                        continue
+
+            final_markers.append(marker)
+
+        # ── 步驟 5：清理墨水點 ──
         cleaned_ink_samples = []
         removed_samples_count = 0
         removal_reasons = {'pen→eraser': 0, 'pen→pen': 0, 'before_recording_start': 0}
-        
+
         for sample in ink_samples:
             should_remove = False
             removal_reason = None
-            
-            # ✅✅✅ 如果有最後一個 recording_start，刪除它之前的所有墨水點
+
             if last_recording_start_time is not None:
                 if sample.timestamp < last_recording_start_time:
                     should_remove = True
                     removal_reason = 'before_recording_start'
-            
-            # 檢查是否在任何無效時間範圍內
+
             if not should_remove:
                 for start_time, end_time, stroke_id, reason in invalid_time_ranges:
-                    # 只刪除在時間範圍內且 stroke_id 匹配的墨水點
                     if start_time <= sample.timestamp < end_time and str(sample.stroke_id) == stroke_id:
                         should_remove = True
                         removal_reason = reason
-                        self.logger.debug(f"   刪除墨水點: timestamp={sample.timestamp:.3f}, stroke_id={sample.stroke_id}, 原因={reason}")
+                        self.logger.debug(
+                            f"   刪除墨水點: timestamp={sample.timestamp:.3f}, "
+                            f"stroke_id={sample.stroke_id}, 原因={reason}"
+                        )
                         break
-            
+
             if not should_remove:
                 cleaned_ink_samples.append(sample)
             else:
                 removed_samples_count += 1
                 if removal_reason:
                     removal_reasons[removal_reason] += 1
-        
-        # 統計結果
+
+        # ── 統計結果 ──
         removed_markers = len(invalid_marker_indices)
-        
+
         cleaning_stats = {
             'invalid_time_ranges': len(invalid_time_ranges),
             'removed_markers': removed_markers,
             'removed_ink_samples': removed_samples_count,
             'removal_by_reason': removal_reasons,
-            'remaining_markers': len(cleaned_markers),
+            'remaining_markers': len(final_markers),
             'remaining_ink_samples': len(cleaned_ink_samples),
             'last_recording_start_time': last_recording_start_time,
-            'duplicate_stroke_starts_removed': duplicate_count  # 🆕 新增統計
+            'duplicate_stroke_starts_removed': duplicate_count,
+            'eraser_events_fully_removed': eraser_filtered_count,    # 🆕
+            'eraser_events_partially_fixed': eraser_partial_count,   # 🆕
+            'deleted_stroke_ids': sorted(deleted_stroke_ids),        # 🆕
         }
-        
+
         self.logger.info(f"✅ 清理完成:")
-        self.logger.info(f"   - 重複 stroke_start 移除: {duplicate_count} 個")  # 🆕
+        self.logger.info(f"   - 重複 stroke_start 移除: {duplicate_count} 個")
         self.logger.info(f"   - 無效時間範圍: {cleaning_stats['invalid_time_ranges']} 個")
         self.logger.info(f"   - 移除標記: {cleaning_stats['removed_markers']} 個")
         self.logger.info(f"   - 移除墨水點: {cleaning_stats['removed_ink_samples']} 個")
         self.logger.info(f"     • pen→eraser: {removal_reasons['pen→eraser']} 個")
         self.logger.info(f"     • pen→pen: {removal_reasons['pen→pen']} 個")
         self.logger.info(f"     • before_recording_start: {removal_reasons['before_recording_start']} 個")
+        self.logger.info(f"   - eraser event 完全移除: {eraser_filtered_count} 個")   # 🆕
+        self.logger.info(f"   - eraser event 部分修正: {eraser_partial_count} 個")    # 🆕
         self.logger.info(f"   - 剩餘標記: {cleaning_stats['remaining_markers']} 個")
         self.logger.info(f"   - 剩餘墨水點: {cleaning_stats['remaining_ink_samples']} 個")
-        
-        return cleaned_markers, cleaned_ink_samples, cleaning_stats
+
+        return final_markers, cleaned_ink_samples, cleaning_stats
 
 
     
