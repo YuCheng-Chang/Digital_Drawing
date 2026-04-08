@@ -1,0 +1,227 @@
+2026-04-08 19:44:08,159 - WacomDrawingCanvas - INFO - ✅ 日誌已配置輸出到: ./wacom_recordings\S001_YCC_20010408\S001_YCC_20260408_194334\2_DAP_20260408_194407\system_log.txt
+2026-04-08 19:44:08,161 - InkProcessingSystem - INFO - ✅ 已設置外部時間源（LSL 時間）
+2026-04-08 19:44:08,161 - WacomDrawingCanvas - INFO - ✅ 墨水系統時間源已設置為 LSL 時間
+2026-04-08 19:44:08,162 - PointProcessor - DEBUG - 🧹 已清空歷史點緩存
+2026-04-08 19:44:08,162 - InkProcessingSystem - INFO - ✅ 已設置外部時間源（LSL 時間）
+2026-04-08 19:44:08,162 - WacomDrawingCanvas - INFO - ✅ 墨水系統已重置
+2026-04-08 19:44:08,163 - WacomDrawingCanvas - INFO - ✅ 筆按鈕已顯示（DAP）
+2026-04-08 19:44:08,163 - WacomDrawingCanvas - INFO - ✅ 橡皮擦按鈕已顯示（DAP）
+2026-04-08 19:44:08,163 - WacomDrawingCanvas - INFO - ⚠️ 顏色按鈕已隱藏（DAP）
+2026-04-08 19:44:08,164 - WacomDrawingCanvas - INFO - ✅ 新繪畫已開始 (繪畫編號: 2)
+2026-04-08 19:44:08,165 - ExperimenterControlWindow - INFO - 📝 控制面板資訊已更新: S001, #2, DAP
+2026-04-08 19:44:08,165 - ExperimenterControlWindow - INFO - ⏱ 碼表已啟動
+2026-04-08 19:44:08,173 - WacomDrawingCanvas - INFO - 🚪 筆進入畫布區域 (當前壓力: 0.000)
+2026-04-08 19:44:08,173 - WacomDrawingCanvas - DEBUG - ✅ 創建自定義游標（無邊框，無高光點）: color=#000000, size=8
+2026-04-08 19:44:08,174 - WacomDrawingCanvas - DEBUG - 🖱️ 游標已更新為筆頭（顏色: #000000）
+2026-04-08 19:44:08,900 - WacomDrawingCanvas - INFO - 🚪 筆離開畫布區域 (當前壓力: 0.000)
+2026-04-08 19:44:08,901 - WacomDrawingCanvas - DEBUG - 🖱️ 游標已恢復為箭頭（離開畫布）
+2026-04-08 19:44:08,902 - PointProcessor - DEBUG - 🧹 已清空歷史點緩存
+2026-04-08 19:44:08,903 - WacomDrawingCanvas - INFO - 🧹 已清空 PointProcessor 歷史緩存
+2026-04-08 19:44:08,904 - StrokeDetector - INFO - 🔄 強制重置狀態: current_state=IDLE, current_stroke_id=0, current_points=0
+2026-04-08 19:44:08,904 - StrokeDetector - INFO - ✅ 狀態已重置為 IDLE，下一筆將使用 stroke_id=0
+2026-04-08 19:44:08,905 - WacomDrawingCanvas - INFO - 🧹 已強制重置 StrokeDetector 狀態
+2026-04-08 19:44:08,905 - WacomDrawingCanvas - INFO - ✅ 筆劃已強制結束，所有狀態已清理
+2026-04-08 19:44:09,493 - ExperimenterControlWindow - INFO - 🎨 點擊新繪畫按鈕
+2026-04-08 19:44:09,494 - ExperimenterControlWindow - INFO - ⏱ 碼表已停止: 00:01
+2026-04-08 19:44:09,494 - WacomDrawingCanvas - INFO - 🎨 準備開始新繪畫
+2026-04-08 19:44:09,495 - PointProcessor - DEBUG - 🧹 已清空歷史點緩存
+2026-04-08 19:44:09,495 - WacomDrawingCanvas - INFO - 🧹 已清空 PointProcessor 歷史緩存
+2026-04-08 19:44:09,496 - StrokeDetector - INFO - 🔄 強制重置狀態: current_state=IDLE, current_stroke_id=0, current_points=0
+2026-04-08 19:44:09,496 - StrokeDetector - INFO - ✅ 狀態已重置為 IDLE，下一筆將使用 stroke_id=0
+2026-04-08 19:44:09,496 - WacomDrawingCanvas - INFO - 🧹 已強制重置 StrokeDetector 狀態
+2026-04-08 19:44:09,497 - WacomDrawingCanvas - INFO - ✅ 筆劃已強制結束，所有狀態已清理
+2026-04-08 19:44:09,497 - LSLStreamManager - DEBUG - Marker pushed: recording_paused
+2026-04-08 19:44:09,497 - LSLDataRecorder - DEBUG - Marker recorded: recording_paused at 1056510.480
+2026-04-08 19:44:09,498 - LSLIntegration - INFO - Recording paused
+2026-04-08 19:44:09,498 - WacomDrawingCanvas - INFO - ⏸️ LSL 記錄已暫停（等待用戶選擇）
+2026-04-08 19:44:09,502 - WacomDrawingCanvas - INFO - 🎨 繪畫類型對話框顯示在螢幕中央（單螢幕模式）
+2026-04-08 19:44:10,578 - ArtworkDisplayWindow - INFO - 🖼️ 成品展示視窗已開啟（單螢幕普通視窗）: 960x648 at (10,216)
+2026-04-08 19:44:10,579 - WacomDrawingCanvas - INFO - 🖼️ 繪畫成品展示視窗已開啟
+2026-04-08 19:44:10,580 - DrawingTypeDialog - INFO - 展示繪畫成品
+2026-04-08 19:44:11,871 - WacomDrawingCanvas - INFO - ❌ 繪畫成品展示視窗已關閉
+2026-04-08 19:44:11,872 - DrawingTypeDialog - INFO - ❌ 關閉繪畫成品展示
+2026-04-08 19:44:13,333 - ArtworkDisplayWindow - INFO - 🖼️ 成品展示視窗已開啟（單螢幕普通視窗）: 960x648 at (10,216)
+2026-04-08 19:44:13,334 - WacomDrawingCanvas - INFO - 🖼️ 繪畫成品展示視窗已開啟
+2026-04-08 19:44:13,334 - DrawingTypeDialog - INFO - 展示繪畫成品
+2026-04-08 19:44:15,816 - WacomDrawingCanvas - INFO - ❌ 繪畫成品展示視窗已關閉
+2026-04-08 19:44:15,817 - DrawingTypeDialog - INFO - ❌ 關閉繪畫成品展示
+2026-04-08 19:44:22,329 - WacomDrawingCanvas - INFO - ✅ 用戶確認新繪畫，開始終止當前繪畫
+2026-04-08 19:44:22,330 - WacomDrawingCanvas - INFO - ============================================================
+2026-04-08 19:44:22,330 - WacomDrawingCanvas - INFO - 📈 繪畫統計
+2026-04-08 19:44:22,330 - WacomDrawingCanvas - INFO - ============================================================
+2026-04-08 19:44:22,331 - WacomDrawingCanvas - INFO - 受試者編號: S001
+2026-04-08 19:44:22,331 - WacomDrawingCanvas - INFO - 繪畫類型: DAP
+2026-04-08 19:44:22,331 - WacomDrawingCanvas - INFO - 繪畫計數: 2
+2026-04-08 19:44:22,332 - WacomDrawingCanvas - INFO - 繪畫ID: 2
+2026-04-08 19:44:22,332 - WacomDrawingCanvas - INFO - 顯示模式: 單螢幕
+2026-04-08 19:44:22,332 - WacomDrawingCanvas - INFO - ------------------------------------------------------------
+2026-04-08 19:44:22,333 - WacomDrawingCanvas - INFO - 總筆劃數: 0
+2026-04-08 19:44:22,333 - WacomDrawingCanvas - INFO - 總原始點數: 0
+2026-04-08 19:44:22,333 - WacomDrawingCanvas - INFO - 總處理點數: 0
+2026-04-08 19:44:22,334 - WacomDrawingCanvas - INFO - 平均採樣率: N/A (樣本數不足: 0)
+2026-04-08 19:44:22,334 - WacomDrawingCanvas - INFO - ------------------------------------------------------------
+2026-04-08 19:44:22,334 - WacomDrawingCanvas - INFO - 畫布筆劃數: 0 (已刪除: 0)
+2026-04-08 19:44:22,335 - WacomDrawingCanvas - INFO - ============================================================
+2026-04-08 19:44:22,397 - WacomDrawingCanvas - INFO - ✅ 畫布已匯出: wacom_recordings\S001_YCC_20010408\S001_YCC_20260408_194334\2_DAP_20260408_194407\canvas_drawing.png
+2026-04-08 19:44:22,399 - WacomDrawingCanvas - INFO -    - 檔案大小: 7.65 KB
+2026-04-08 19:44:22,400 - WacomDrawingCanvas - INFO - ✅ 畫布已保存: wacom_recordings\S001_YCC_20010408\S001_YCC_20260408_194334\2_DAP_20260408_194407\canvas_drawing.png
+2026-04-08 19:44:22,401 - WacomDrawingCanvas - INFO - 🔚 保存當前繪畫數據...
+2026-04-08 19:44:22,401 - LSLIntegration - INFO - Stopping LSL integration...
+2026-04-08 19:44:22,402 - LSLStreamManager - DEBUG - Marker pushed: recording_end
+2026-04-08 19:44:22,402 - LSLDataRecorder - DEBUG - Marker recorded: recording_end at 1056523.386
+2026-04-08 19:44:22,403 - LSLStreamManager - INFO - Closing LSL streams...
+2026-04-08 19:44:22,403 - LSLStreamManager - DEBUG - Marker pushed: stream_end
+2026-04-08 19:44:22,403 - LSLStreamManager - INFO - Color mapping used in this session: {'black': 0, '#000000': 0, 'red': 1, '#ff0000': 1, 'blue': 2, '#0000ff': 2, 'green': 3, '#008000': 3, 'orange': 4, '#ffa500': 4, 'purple': 5, '#800080': 5}
+2026-04-08 19:44:22,456 - LSLStreamManager - INFO - Stream closed. Final stats: {'total_ink_samples': 0, 'total_markers': 4, 'stream_duration': 14.301595099968836, 'last_sample_time': None, 'total_colors_used': 12}
+2026-04-08 19:44:22,456 - LSLDataRecorder - INFO - Recording stopped. Saving 0 ink samples and 3 markers...
+2026-04-08 19:44:22,458 - LSLDataRecorder - INFO - 🧹 開始清理（擴展模式：pen→eraser、pen→pen + 去重）...
+2026-04-08 19:44:22,458 - LSLDataRecorder - INFO - ✅ 找到最後一個 recording_start: 1056509.138
+2026-04-08 19:44:22,459 - LSLDataRecorder - INFO - ✅ 去重完成，移除 0 個重複的 stroke_start 標記
+2026-04-08 19:44:22,459 - LSLDataRecorder - INFO - ✅ 清理完成:
+2026-04-08 19:44:22,460 - LSLDataRecorder - INFO -    - 重複 stroke_start 移除: 0 個
+2026-04-08 19:44:22,460 - LSLDataRecorder - INFO -    - 無效時間範圍: 0 個
+2026-04-08 19:44:22,460 - LSLDataRecorder - INFO -    - 移除標記: 0 個
+2026-04-08 19:44:22,461 - LSLDataRecorder - INFO -    - 移除墨水點: 0 個
+2026-04-08 19:44:22,461 - LSLDataRecorder - INFO -      • pen→eraser: 0 個
+2026-04-08 19:44:22,462 - LSLDataRecorder - INFO -      • pen→pen: 0 個
+2026-04-08 19:44:22,462 - LSLDataRecorder - INFO -      • before_recording_start: 0 個
+2026-04-08 19:44:22,462 - LSLDataRecorder - INFO -    - 剩餘標記: 3 個
+2026-04-08 19:44:22,463 - LSLDataRecorder - INFO -    - 剩餘墨水點: 0 個
+2026-04-08 19:44:22,493 - LSLDataRecorder - INFO - 💾 已保存原始數據（沒有數據被清理，但仍保存用於對比）
+2026-04-08 19:44:22,507 - LSLDataRecorder - INFO - Data saved successfully: {'ink_csv': 'wacom_recordings\\S001_YCC_20010408\\S001_YCC_20260408_194334\\2_DAP_20260408_194407\\ink_data.csv', 'ink_json': 'wacom_recordings\\S001_YCC_20010408\\S001_YCC_20260408_194334\\2_DAP_20260408_194407\\ink_data.json', 'markers_csv': 'wacom_recordings\\S001_YCC_20010408\\S001_YCC_20260408_194334\\2_DAP_20260408_194407\\markers.csv', 'markers_raw': 'wacom_recordings\\S001_YCC_20010408\\S001_YCC_20260408_194334\\2_DAP_20260408_194407\\markers_raw.csv', 'ink_data_raw': 'wacom_recordings\\S001_YCC_20010408\\S001_YCC_20260408_194334\\2_DAP_20260408_194407\\ink_data_raw.csv', 'metadata': 'wacom_recordings\\S001_YCC_20010408\\S001_YCC_20260408_194334\\2_DAP_20260408_194407\\metadata.json', 'summary': 'wacom_recordings\\S001_YCC_20010408\\S001_YCC_20260408_194334\\2_DAP_20260408_194407\\summary.txt'}
+2026-04-08 19:44:22,508 - LSLIntegration - INFO - LSL integration stopped. Files saved: 7
+2026-04-08 19:44:22,509 - WacomDrawingCanvas - INFO - ✅ 當前繪畫數據已保存: {'ink_csv': 'wacom_recordings\\S001_YCC_20010408\\S001_YCC_20260408_194334\\2_DAP_20260408_194407\\ink_data.csv', 'ink_json': 'wacom_recordings\\S001_YCC_20010408\\S001_YCC_20260408_194334\\2_DAP_20260408_194407\\ink_data.json', 'markers_csv': 'wacom_recordings\\S001_YCC_20010408\\S001_YCC_20260408_194334\\2_DAP_20260408_194407\\markers.csv', 'markers_raw': 'wacom_recordings\\S001_YCC_20010408\\S001_YCC_20260408_194334\\2_DAP_20260408_194407\\markers_raw.csv', 'ink_data_raw': 'wacom_recordings\\S001_YCC_20010408\\S001_YCC_20260408_194334\\2_DAP_20260408_194407\\ink_data_raw.csv', 'metadata': 'wacom_recordings\\S001_YCC_20010408\\S001_YCC_20260408_194334\\2_DAP_20260408_194407\\metadata.json', 'summary': 'wacom_recordings\\S001_YCC_20010408\\S001_YCC_20260408_194334\\2_DAP_20260408_194407\\summary.txt'}
+2026-04-08 19:44:22,536 - root - INFO - ✅ 繪畫測驗配置已添加到 metadata.json
+2026-04-08 19:44:22,537 - WacomDrawingCanvas - INFO - ✅ 新繪畫資訊: {'drawing_type': 'FD', 'drawing_id': 3, 'datetime_str': '20260408_194422', 'folder_name': '3_FD_20260408_194422'}
+2026-04-08 19:44:22,538 - WacomDrawingCanvas - INFO - ✅ 測試配置: 自由繪畫 (Free Drawing)
+2026-04-08 19:44:22,538 - WacomDrawingCanvas - INFO - 📝 視窗標題已更新: Wacom 繪圖測試 - S001 - 繪畫 #3 (FD)
+2026-04-08 19:44:22,539 - EraserTool - INFO - 🧹 橡皮擦歷史已清空
+2026-04-08 19:44:22,539 - WacomDrawingCanvas - INFO - 🎨 顏色已重置為黑色
+2026-04-08 19:44:22,540 - WacomDrawingCanvas - DEBUG - ✅ 創建自定義游標（無邊框，無高光點）: color=#000000, size=8
+2026-04-08 19:44:22,541 - WacomDrawingCanvas - DEBUG - 🖱️ 游標已更新為筆頭（顏色: #000000）
+2026-04-08 19:44:22,541 - WacomDrawingCanvas - INFO - ✅ 筆按鈕已顯示（FD）
+2026-04-08 19:44:22,541 - WacomDrawingCanvas - INFO - ✅ 橡皮擦按鈕已顯示（FD）
+2026-04-08 19:44:22,542 - WacomDrawingCanvas - DEBUG - 🎨 顏色按鈕樣式已更新: #000000
+2026-04-08 19:44:22,542 - WacomDrawingCanvas - INFO - ✅ 顏色按鈕已顯示（FD）
+2026-04-08 19:44:22,543 - WacomDrawingCanvas - INFO - ✅ 畫布狀態已重置
+2026-04-08 19:44:22,549 - LSLIntegration - INFO - Starting LSL integration...
+2026-04-08 19:44:22,550 - LSLStreamManager - INFO - Initializing LSL streams...
+2026-04-08 19:44:22,552 - LSLStreamManager - INFO - Ink stream created: DigitalInk
+2026-04-08 19:44:22,554 - LSLStreamManager - INFO - Marker stream created: InkMarkers
+2026-04-08 19:44:22,554 - LSLStreamManager - INFO - LSL streams initialized successfully
+2026-04-08 19:44:22,555 - LSLDataRecorder - INFO - Recording started: session_id=3_FD
+2026-04-08 19:44:22,555 - LSLStreamManager - DEBUG - Marker pushed: recording_start
+2026-04-08 19:44:22,555 - LSLDataRecorder - DEBUG - Marker recorded: recording_start at 1056523.539
+2026-04-08 19:44:22,556 - LSLIntegration - INFO - LSL integration started: session_id=3_FD
+2026-04-08 19:44:22,559 - WacomDrawingCanvas - INFO - ✅ 日誌已配置輸出到: ./wacom_recordings\S001_YCC_20010408\S001_YCC_20260408_194334\3_FD_20260408_194422\system_log.txt
+2026-04-08 19:44:22,561 - InkProcessingSystem - INFO - ✅ 已設置外部時間源（LSL 時間）
+2026-04-08 19:44:22,562 - WacomDrawingCanvas - INFO - ✅ 墨水系統時間源已設置為 LSL 時間
+2026-04-08 19:44:22,562 - PointProcessor - DEBUG - 🧹 已清空歷史點緩存
+2026-04-08 19:44:22,562 - InkProcessingSystem - INFO - ✅ 已設置外部時間源（LSL 時間）
+2026-04-08 19:44:22,563 - WacomDrawingCanvas - INFO - ✅ 墨水系統已重置
+2026-04-08 19:44:22,563 - WacomDrawingCanvas - INFO - ✅ 筆按鈕已顯示（FD）
+2026-04-08 19:44:22,564 - WacomDrawingCanvas - INFO - ✅ 橡皮擦按鈕已顯示（FD）
+2026-04-08 19:44:22,565 - WacomDrawingCanvas - DEBUG - 🎨 顏色按鈕樣式已更新: #000000
+2026-04-08 19:44:22,565 - WacomDrawingCanvas - INFO - ✅ 顏色按鈕已顯示（FD）
+2026-04-08 19:44:22,566 - WacomDrawingCanvas - INFO - ✅ 新繪畫已開始 (繪畫編號: 3)
+2026-04-08 19:44:22,567 - ExperimenterControlWindow - INFO - 📝 控制面板資訊已更新: S001, #3, FD
+2026-04-08 19:44:22,568 - ExperimenterControlWindow - INFO - ⏱ 碼表已啟動
+2026-04-08 19:44:22,574 - WacomDrawingCanvas - INFO - 🚪 筆進入畫布區域 (當前壓力: 0.000)
+2026-04-08 19:44:22,575 - WacomDrawingCanvas - DEBUG - ✅ 創建自定義游標（無邊框，無高光點）: color=#000000, size=8
+2026-04-08 19:44:22,576 - WacomDrawingCanvas - DEBUG - 🖱️ 游標已更新為筆頭（顏色: #000000）
+2026-04-08 19:44:23,610 - PointProcessor - DEBUG - 🧹 已清空歷史點緩存
+2026-04-08 19:44:23,625 - WacomDrawingCanvas - INFO - 🚪 筆離開畫布區域 (當前壓力: 0.000)
+2026-04-08 19:44:23,626 - WacomDrawingCanvas - DEBUG - 🖱️ 游標已恢復為箭頭（離開畫布）
+2026-04-08 19:44:23,627 - PointProcessor - DEBUG - 🧹 已清空歷史點緩存
+2026-04-08 19:44:23,628 - WacomDrawingCanvas - INFO - 🧹 已清空 PointProcessor 歷史緩存
+2026-04-08 19:44:23,628 - StrokeDetector - INFO - 🔄 強制重置狀態: current_state=IDLE, current_stroke_id=0, current_points=0
+2026-04-08 19:44:23,629 - StrokeDetector - INFO - ✅ 狀態已重置為 IDLE，下一筆將使用 stroke_id=0
+2026-04-08 19:44:23,629 - WacomDrawingCanvas - INFO - 🧹 已強制重置 StrokeDetector 狀態
+2026-04-08 19:44:23,630 - WacomDrawingCanvas - INFO - ✅ 筆劃已強制結束，所有狀態已清理
+2026-04-08 19:44:24,513 - WacomDrawingCanvas - DEBUG - 🎨 顏色按鈕樣式已更新: #800000
+2026-04-08 19:44:24,514 - LSLStreamManager - DEBUG - Marker pushed: color_switch|from:#000000|to:#800000
+2026-04-08 19:44:24,514 - LSLDataRecorder - DEBUG - Marker recorded: color_switch|from:#000000|to:#800000 at 1056525.497
+2026-04-08 19:44:24,515 - LSLIntegration - INFO - 🎨 顏色切換事件已記錄: #000000 → #800000
+2026-04-08 19:44:24,515 - WacomDrawingCanvas - DEBUG - ✅ 創建自定義游標（無邊框，無高光點）: color=#800000, size=8
+2026-04-08 19:44:24,516 - WacomDrawingCanvas - DEBUG - 🖱️ 游標已更新為筆頭（顏色: #800000）
+2026-04-08 19:44:24,516 - WacomDrawingCanvas - INFO - 🎨 顏色已切換: #000000 → #800000
+2026-04-08 19:44:24,525 - WacomDrawingCanvas - INFO - 🚪 筆進入畫布區域 (當前壓力: 0.000)
+2026-04-08 19:44:24,526 - WacomDrawingCanvas - DEBUG - ✅ 創建自定義游標（無邊框，無高光點）: color=#800000, size=8
+2026-04-08 19:44:24,527 - WacomDrawingCanvas - DEBUG - 🖱️ 游標已更新為筆頭（顏色: #800000）
+2026-04-08 19:44:25,724 - WacomDrawingCanvas - INFO - 🚪 筆離開畫布區域 (當前壓力: 0.000)
+2026-04-08 19:44:25,725 - WacomDrawingCanvas - DEBUG - 🖱️ 游標已恢復為箭頭（離開畫布）
+2026-04-08 19:44:25,726 - PointProcessor - DEBUG - 🧹 已清空歷史點緩存
+2026-04-08 19:44:25,726 - WacomDrawingCanvas - INFO - 🧹 已清空 PointProcessor 歷史緩存
+2026-04-08 19:44:25,727 - StrokeDetector - INFO - 🔄 強制重置狀態: current_state=IDLE, current_stroke_id=0, current_points=0
+2026-04-08 19:44:25,727 - StrokeDetector - INFO - ✅ 狀態已重置為 IDLE，下一筆將使用 stroke_id=0
+2026-04-08 19:44:25,727 - WacomDrawingCanvas - INFO - 🧹 已強制重置 StrokeDetector 狀態
+2026-04-08 19:44:25,728 - WacomDrawingCanvas - INFO - ✅ 筆劃已強制結束，所有狀態已清理
+2026-04-08 19:44:26,439 - ExperimenterControlWindow - INFO - ❌ 點擊關閉程式按鈕
+2026-04-08 19:44:27,967 - ExperimenterControlWindow - INFO - ✅ 用戶確認關閉程式
+2026-04-08 19:44:27,967 - WacomDrawingCanvas - INFO - ============================================================
+2026-04-08 19:44:27,968 - WacomDrawingCanvas - INFO - 🔚 程序關閉
+2026-04-08 19:44:27,969 - WacomDrawingCanvas - INFO - ============================================================
+2026-04-08 19:44:27,969 - ExperimenterControlWindow - INFO - 🔚 控制視窗關閉
+2026-04-08 19:44:27,973 - WacomDrawingCanvas - INFO - ============================================================
+2026-04-08 19:44:27,975 - WacomDrawingCanvas - INFO - 📈 繪畫統計
+2026-04-08 19:44:27,975 - WacomDrawingCanvas - INFO - ============================================================
+2026-04-08 19:44:27,976 - WacomDrawingCanvas - INFO - 受試者編號: S001
+2026-04-08 19:44:27,977 - WacomDrawingCanvas - INFO - 繪畫類型: FD
+2026-04-08 19:44:27,978 - WacomDrawingCanvas - INFO - 繪畫計數: 3
+2026-04-08 19:44:27,979 - WacomDrawingCanvas - INFO - 繪畫ID: 3
+2026-04-08 19:44:27,979 - WacomDrawingCanvas - INFO - 顯示模式: 單螢幕
+2026-04-08 19:44:27,980 - WacomDrawingCanvas - INFO - ------------------------------------------------------------
+2026-04-08 19:44:27,981 - WacomDrawingCanvas - INFO - 總筆劃數: 0
+2026-04-08 19:44:27,982 - WacomDrawingCanvas - INFO - 總原始點數: 0
+2026-04-08 19:44:27,982 - WacomDrawingCanvas - INFO - 總處理點數: 0
+2026-04-08 19:44:27,983 - WacomDrawingCanvas - INFO - 平均採樣率: N/A (樣本數不足: 0)
+2026-04-08 19:44:27,983 - WacomDrawingCanvas - INFO - ------------------------------------------------------------
+2026-04-08 19:44:27,984 - WacomDrawingCanvas - INFO - 畫布筆劃數: 0 (已刪除: 0)
+2026-04-08 19:44:27,985 - WacomDrawingCanvas - INFO - ============================================================
+2026-04-08 19:44:28,047 - WacomDrawingCanvas - INFO - ✅ 畫布已匯出: wacom_recordings\S001_YCC_20010408\S001_YCC_20260408_194334\3_FD_20260408_194422\canvas_drawing.png
+2026-04-08 19:44:28,050 - WacomDrawingCanvas - INFO -    - 檔案大小: 7.65 KB
+2026-04-08 19:44:28,051 - WacomDrawingCanvas - INFO - ✅ 畫布已保存: wacom_recordings\S001_YCC_20010408\S001_YCC_20260408_194334\3_FD_20260408_194422\canvas_drawing.png
+2026-04-08 19:44:28,052 - WacomDrawingCanvas - INFO - 🔚 保存當前繪畫數據...
+2026-04-08 19:44:28,053 - LSLIntegration - INFO - Stopping LSL integration...
+2026-04-08 19:44:28,053 - LSLStreamManager - DEBUG - Marker pushed: recording_end
+2026-04-08 19:44:28,054 - LSLDataRecorder - DEBUG - Marker recorded: recording_end at 1056529.037
+2026-04-08 19:44:28,054 - LSLStreamManager - INFO - Closing LSL streams...
+2026-04-08 19:44:28,055 - LSLStreamManager - DEBUG - Marker pushed: stream_end
+2026-04-08 19:44:28,055 - LSLStreamManager - INFO - Color mapping used in this session: {'black': 0, '#000000': 0, 'red': 1, '#ff0000': 1, 'blue': 2, '#0000ff': 2, 'green': 3, '#008000': 3, 'orange': 4, '#ffa500': 4, 'purple': 5, '#800080': 5}
+2026-04-08 19:44:28,108 - LSLStreamManager - INFO - Stream closed. Final stats: {'total_ink_samples': 0, 'total_markers': 4, 'stream_duration': 5.5534882000647485, 'last_sample_time': None, 'total_colors_used': 12}
+2026-04-08 19:44:28,109 - LSLDataRecorder - INFO - Recording stopped. Saving 0 ink samples and 3 markers...
+2026-04-08 19:44:28,110 - LSLDataRecorder - INFO - 🧹 開始清理（擴展模式：pen→eraser、pen→pen + 去重）...
+2026-04-08 19:44:28,111 - LSLDataRecorder - INFO - ✅ 找到最後一個 recording_start: 1056523.539
+2026-04-08 19:44:28,111 - LSLDataRecorder - INFO - ✅ 去重完成，移除 0 個重複的 stroke_start 標記
+2026-04-08 19:44:28,112 - LSLDataRecorder - INFO - ✅ 清理完成:
+2026-04-08 19:44:28,112 - LSLDataRecorder - INFO -    - 重複 stroke_start 移除: 0 個
+2026-04-08 19:44:28,113 - LSLDataRecorder - INFO -    - 無效時間範圍: 0 個
+2026-04-08 19:44:28,113 - LSLDataRecorder - INFO -    - 移除標記: 0 個
+2026-04-08 19:44:28,114 - LSLDataRecorder - INFO -    - 移除墨水點: 0 個
+2026-04-08 19:44:28,115 - LSLDataRecorder - INFO -      • pen→eraser: 0 個
+2026-04-08 19:44:28,115 - LSLDataRecorder - INFO -      • pen→pen: 0 個
+2026-04-08 19:44:28,116 - LSLDataRecorder - INFO -      • before_recording_start: 0 個
+2026-04-08 19:44:28,116 - LSLDataRecorder - INFO -    - 剩餘標記: 3 個
+2026-04-08 19:44:28,117 - LSLDataRecorder - INFO -    - 剩餘墨水點: 0 個
+2026-04-08 19:44:28,150 - LSLDataRecorder - INFO - 💾 已保存原始數據（沒有數據被清理，但仍保存用於對比）
+2026-04-08 19:44:28,165 - LSLDataRecorder - INFO - Data saved successfully: {'ink_csv': 'wacom_recordings\\S001_YCC_20010408\\S001_YCC_20260408_194334\\3_FD_20260408_194422\\ink_data.csv', 'ink_json': 'wacom_recordings\\S001_YCC_20010408\\S001_YCC_20260408_194334\\3_FD_20260408_194422\\ink_data.json', 'markers_csv': 'wacom_recordings\\S001_YCC_20010408\\S001_YCC_20260408_194334\\3_FD_20260408_194422\\markers.csv', 'markers_raw': 'wacom_recordings\\S001_YCC_20010408\\S001_YCC_20260408_194334\\3_FD_20260408_194422\\markers_raw.csv', 'ink_data_raw': 'wacom_recordings\\S001_YCC_20010408\\S001_YCC_20260408_194334\\3_FD_20260408_194422\\ink_data_raw.csv', 'metadata': 'wacom_recordings\\S001_YCC_20010408\\S001_YCC_20260408_194334\\3_FD_20260408_194422\\metadata.json', 'summary': 'wacom_recordings\\S001_YCC_20010408\\S001_YCC_20260408_194334\\3_FD_20260408_194422\\summary.txt'}
+2026-04-08 19:44:28,167 - LSLIntegration - INFO - LSL integration stopped. Files saved: 7
+2026-04-08 19:44:28,168 - WacomDrawingCanvas - INFO - ✅ 當前繪畫數據已保存: {'ink_csv': 'wacom_recordings\\S001_YCC_20010408\\S001_YCC_20260408_194334\\3_FD_20260408_194422\\ink_data.csv', 'ink_json': 'wacom_recordings\\S001_YCC_20010408\\S001_YCC_20260408_194334\\3_FD_20260408_194422\\ink_data.json', 'markers_csv': 'wacom_recordings\\S001_YCC_20010408\\S001_YCC_20260408_194334\\3_FD_20260408_194422\\markers.csv', 'markers_raw': 'wacom_recordings\\S001_YCC_20010408\\S001_YCC_20260408_194334\\3_FD_20260408_194422\\markers_raw.csv', 'ink_data_raw': 'wacom_recordings\\S001_YCC_20010408\\S001_YCC_20260408_194334\\3_FD_20260408_194422\\ink_data_raw.csv', 'metadata': 'wacom_recordings\\S001_YCC_20010408\\S001_YCC_20260408_194334\\3_FD_20260408_194422\\metadata.json', 'summary': 'wacom_recordings\\S001_YCC_20010408\\S001_YCC_20260408_194334\\3_FD_20260408_194422\\summary.txt'}
+2026-04-08 19:44:28,181 - root - INFO - ✅ 繪畫測驗配置已添加到 metadata.json
+2026-04-08 19:44:28,182 - WacomDrawingCanvas - INFO - 停止墨水處理系統...
+2026-04-08 19:44:28,183 - InkProcessingSystem - INFO - Stopping processing pipeline...
+2026-04-08 19:44:28,184 - InkProcessingSystem - DEBUG - 沒有未完成的筆劃需要處理
+2026-04-08 19:44:28,184 - RawDataCollector - WARNING - 數據收集未在進行中
+2026-04-08 19:44:28,214 - InkProcessingSystem - INFO - Stroke detection loop ended
+2026-04-08 19:44:28,258 - InkProcessingSystem - INFO - Feature calculation loop ended
+2026-04-08 19:44:28,424 - InkProcessingSystem - INFO - Status monitoring loop ended
+2026-04-08 19:44:28,425 - InkProcessingSystem - INFO - Processing pipeline stopped
+2026-04-08 19:44:28,426 - InkProcessingSystem - INFO - Shutting down ink processing system...
+2026-04-08 19:44:28,426 - PointProcessor - INFO - 正在關閉點處理器...
+2026-04-08 19:44:28,427 - PointProcessor - INFO - 點處理器已關閉
+2026-04-08 19:44:28,428 - StrokeDetector - INFO - 正在關閉筆劃檢測器...
+2026-04-08 19:44:28,428 - StrokeDetector - INFO - ✅ 檢測器狀態已重置
+2026-04-08 19:44:28,429 - StrokeDetector - INFO - ✅ 筆劃檢測器已關閉
+2026-04-08 19:44:28,429 - FeatureCalculator - INFO - 正在關閉特徵計算器...
+2026-04-08 19:44:28,430 - FeatureCalculator - INFO - 特徵計算器已關閉
+2026-04-08 19:44:28,430 - InkProcessingSystem - INFO - System shutdown complete

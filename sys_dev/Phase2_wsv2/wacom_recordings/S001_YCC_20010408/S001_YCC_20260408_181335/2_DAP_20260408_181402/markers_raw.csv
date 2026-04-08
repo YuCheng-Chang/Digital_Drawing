@@ -1,0 +1,11 @@
+timestamp,marker_text
+1051103.425029,recording_start
+1051105.028514,tool_switch|from:pen|to:eraser
+1051106.045551,tool_switch|from:eraser|to:pen
+1051107.013138,tool_switch|from:pen|to:eraser
+1051111.664828,recording_paused
+1051142.035559,recording_resumed
+1051145.005097,recording_paused
+1051149.684710,recording_resumed
+1051156.881249,recording_paused
+1051162.458927,recording_end

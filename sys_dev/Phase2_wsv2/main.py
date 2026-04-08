@@ -364,7 +364,7 @@ class ExperimenterControlWindow(QWidget):
     
     def _setup_ui(self):
         """設置 UI"""
-        self.setWindowTitle("實驗者控制面板")
+        self.setWindowTitle("施測者控制面板")
         self.setFixedSize(600, 460)  # ✅ 移除重置按鈕後高度從 500 改回 460
         
         main_layout = QVBoxLayout()
@@ -438,16 +438,18 @@ class ExperimenterControlWindow(QWidget):
         self.new_drawing_button.setFixedHeight(btn_height)
         self.new_drawing_button.setStyleSheet(f"""
             QPushButton {{
-                background-color: #4CAF50;
-                color: white;
                 font-size: {btn_font_size};
                 font-weight: bold;
                 border-radius: 10px;
             }}
             QPushButton:hover {{
-                background-color: #45a049;
+                background-color: #e0e0e0;
+            }}
+            QPushButton:pressed {{
+                background-color: #c0c0c0;
             }}
         """)
+
         self.new_drawing_button.clicked.connect(self.on_new_drawing_clicked)
         button_layout.addWidget(self.new_drawing_button)
         
@@ -455,16 +457,18 @@ class ExperimenterControlWindow(QWidget):
         self.close_button.setFixedHeight(btn_height)
         self.close_button.setStyleSheet(f"""
             QPushButton {{
-                background-color: #f44336;
-                color: white;
                 font-size: {btn_font_size};
                 font-weight: bold;
                 border-radius: 10px;
             }}
             QPushButton:hover {{
-                background-color: #da190b;
+                background-color: #e0e0e0;
+            }}
+            QPushButton:pressed {{
+                background-color: #c0c0c0;
             }}
         """)
+
         self.close_button.clicked.connect(self.on_close_clicked)
         button_layout.addWidget(self.close_button)
         
@@ -561,6 +565,8 @@ class ExperimenterControlWindow(QWidget):
 class WacomDrawingCanvas(QWidget):
     def __init__(self, ink_system, config: ProcessingConfig, workspace: WorkspaceConfig = None):
         super().__init__()
+        self._should_restart = False  # 🆕
+
         self.ink_system = ink_system
         self.config = config
         
@@ -617,14 +623,10 @@ class WacomDrawingCanvas(QWidget):
 
         # 🆕🆕🆕 修改：第一次取消則退出程式
         if not self.get_subject_info():
-            self.logger.critical("❌ 第一次未輸入受試者資訊，程式退出")
-            # 🆕 停止墨水系統
-            if self.ink_system:
-                self.ink_system.stop_processing()
-                self.ink_system.shutdown()
-            # 🆕 退出應用（不顯示錯誤訊息）
-            QApplication.quit()
-            sys.exit(0)  # 🆕 確保終端機輸出停止
+            self.logger.info("❌ 受試者資訊取消，返回 Workspace 選擇")
+            self._should_restart = True   # 🆕 旗標
+            return                        # 🆕 提早返回，不繼續初始化
+
         
         # 🆕🆕🆕 修改：第一次取消則退出程式
         if not self.get_drawing_type():
@@ -1355,7 +1357,6 @@ class WacomDrawingCanvas(QWidget):
         """)
         self.pen_button.setToolTip("筆")
         self.pen_button.clicked.connect(lambda: self.switch_tool(ToolType.PEN))
-        toolbar_layout.addWidget(self.pen_button, alignment=Qt.AlignCenter)
         
         # 橡皮擦按鈕
         self.eraser_button = QPushButton("🧈")
@@ -1373,7 +1374,6 @@ class WacomDrawingCanvas(QWidget):
         """)
         self.eraser_button.setToolTip("橡皮擦")
         self.eraser_button.clicked.connect(lambda: self.switch_tool(ToolType.ERASER))
-        toolbar_layout.addWidget(self.eraser_button, alignment=Qt.AlignCenter)
         
         # 🆕 顏色選擇按鈕
         self.color_button = QPushButton("🎨")
@@ -1391,8 +1391,11 @@ class WacomDrawingCanvas(QWidget):
         """)
         self.color_button.setToolTip("選擇顏色")
         self.color_button.clicked.connect(self.choose_color)
-        toolbar_layout.addWidget(self.color_button, alignment=Qt.AlignCenter)
         
+        toolbar_layout.addWidget(self.eraser_button, alignment=Qt.AlignCenter)  # 橡皮擦在上
+        toolbar_layout.addWidget(self.pen_button,    alignment=Qt.AlignCenter)  # 筆在下
+        toolbar_layout.addWidget(self.color_button,  alignment=Qt.AlignCenter)
+
         # 🆕🆕🆕 根據繪畫類型決定是否顯示顏色按鈕
         self._update_toolbar_buttons_visibility()
         
@@ -1478,9 +1481,10 @@ class WacomDrawingCanvas(QWidget):
                 toolbar_layout.setSpacing(20)
                 toolbar_layout.setContentsMargins(10, 0, 10, 0)
                 toolbar_layout.addStretch()
-                toolbar_layout.addWidget(self.pen_button,    alignment=Qt.AlignCenter)
                 toolbar_layout.addWidget(self.eraser_button, alignment=Qt.AlignCenter)
+                toolbar_layout.addWidget(self.pen_button,    alignment=Qt.AlignCenter)
                 toolbar_layout.addWidget(self.color_button,  alignment=Qt.AlignCenter)
+
                 toolbar_layout.addStretch()
 
                 toolbar_widget = QWidget()
@@ -1510,9 +1514,10 @@ class WacomDrawingCanvas(QWidget):
                 toolbar_layout.setSpacing(20)
                 toolbar_layout.setContentsMargins(10, 0, 10, 0)
                 toolbar_layout.addStretch()
-                toolbar_layout.addWidget(self.pen_button,    alignment=Qt.AlignCenter)
                 toolbar_layout.addWidget(self.eraser_button, alignment=Qt.AlignCenter)
+                toolbar_layout.addWidget(self.pen_button,    alignment=Qt.AlignCenter)
                 toolbar_layout.addWidget(self.color_button,  alignment=Qt.AlignCenter)
+
                 toolbar_layout.addStretch()
 
                 toolbar_widget = QWidget()
@@ -1667,10 +1672,14 @@ class WacomDrawingCanvas(QWidget):
             # 記錄切換前的顏色
             old_color = self.current_color_name
 
-            if self.current_test_config.toolbar.color_picker_mode == ColorPickerMode.PALETTE_24:
+            mode = self.current_test_config.toolbar.color_picker_mode
+            if mode in (ColorPickerMode.PALETTE_12,
+                        ColorPickerMode.PALETTE_24,
+                        ColorPickerMode.PALETTE_48):
                 color = self._show_palette_color_picker()
             else:
                 color = self._show_full_spectrum_color_picker()
+
 
             if color and color.isValid():
                 self.current_color = color
@@ -1737,9 +1746,20 @@ class WacomDrawingCanvas(QWidget):
             dialog.accept()
         
         # 排列為 6x4 網格
-        for i, color_hex in enumerate(palette[:24]):  # 確保只取 24 個
-            row = i // 6
-            col = i % 6
+        mode = self.current_test_config.toolbar.color_picker_mode
+        if mode == ColorPickerMode.PALETTE_12:
+            max_colors = 12
+            cols = 6
+        elif mode == ColorPickerMode.PALETTE_48:
+            max_colors = 48
+            cols = 8
+        else:  # PALETTE_24
+            max_colors = 24
+            cols = 6
+
+        for i, color_hex in enumerate(palette[:max_colors]):
+            row = i // cols
+            col = i % cols
             grid_layout.addWidget(create_color_button(color_hex), row, col)
         
         main_layout.addLayout(grid_layout)
@@ -2965,20 +2985,27 @@ def test_wacom_with_full_system():
     app = QApplication(sys.argv)
     
     # 先選擇 Workspace
-    workspace_dialog = WorkspaceSelectionDialog()
-    
-    # 🆕🆕🆕 修復：處理取消情況，停止墨水系統並退出應用
-    if workspace_dialog.exec_() != QDialog.Accepted:
-        print("❌ 用戶取消選擇 Workspace，程式結束")
-        ink_system.stop_processing()
-        ink_system.shutdown()
-        sys.exit(0)  # 🆕 確保終端機輸出停止
-    
-    workspace = workspace_dialog.selected_workspace
-    print(f"✅ 已載入 Workspace: {workspace.project_name}")
-    
-    # 🆕🆕🆕 在受試者根目錄儲存 Workspace 配置說明檔
-    canvas = WacomDrawingCanvas(ink_system, config, workspace)
+    while True:
+        # 選擇 Workspace
+        workspace_dialog = WorkspaceSelectionDialog()
+        if workspace_dialog.exec_() != QDialog.Accepted:
+            print("❌ 用戶取消選擇 Workspace，程式結束")
+            ink_system.stop_processing()
+            ink_system.shutdown()
+            sys.exit(0)
+
+        workspace = workspace_dialog.selected_workspace
+        print(f"✅ 已載入 Workspace: {workspace.project_name}")
+
+        canvas = WacomDrawingCanvas(ink_system, config, workspace)
+
+        # 🆕 若受試者資訊取消，重新回到 Workspace 選擇
+        if canvas._should_restart:
+            print("🔄 返回 Workspace 選擇畫面")
+            continue
+
+        break  # 正常繼續
+
     
     # 🆕🆕🆕 儲存 Workspace 配置說明檔到受試者根目錄（第一層）
     if canvas.subject_info:
