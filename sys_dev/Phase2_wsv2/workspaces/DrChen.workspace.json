@@ -66,12 +66,12 @@
       "display_name": "畫人測驗 (Draw-a-Person)",
       "enabled": true,
       "order": 2,
-      "screen_orientation": "landscape",
+      "screen_orientation": "portrait",
       "toolbar": {
         "pen_enabled": true,
         "eraser_enabled": true,
-        "color_picker_enabled": false,
-        "color_picker_mode": "disabled",
+        "color_picker_enabled": true,
+        "color_picker_mode": "palette_12",
         "color_palette": [
           "#000000",
           "#FFFFFF",
@@ -286,12 +286,12 @@
       "display_name": "畫人測驗2 (Draw-a-Person 2)",
       "enabled": true,
       "order": 6,
-      "screen_orientation": "landscape",
+      "screen_orientation": "portrait",
       "toolbar": {
         "pen_enabled": true,
         "eraser_enabled": true,
         "color_picker_enabled": true,
-        "color_picker_mode": "palette_48",
+        "color_picker_mode": "full_spectrum",
         "color_palette": [
           "#000000",
           "#FFFFFF",

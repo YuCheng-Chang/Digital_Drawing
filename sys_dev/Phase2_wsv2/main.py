@@ -1696,36 +1696,158 @@ class WacomDrawingCanvas(QWidget):
             import traceback
             self.logger.error(traceback.format_exc())
 
+    def _wrap_dialog_with_rotation(self, inner_widget: 'QWidget') -> 'QDialog':
+        """將任意 QWidget 包裝成旋轉對話框（直向模式用）"""
+        from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QGraphicsView,
+                                    QGraphicsScene, QGraphicsProxyWidget,
+                                    QDesktopWidget)
+
+        desktop = QDesktopWidget()
+        screen = desktop.screenGeometry(1 if desktop.screenCount() > 1 else 0)
+        screen_w = screen.width()
+        screen_h = screen.height()
+
+        content_w = inner_widget.width()
+        content_h = inner_widget.height()
+
+        # 🆕 保護：尺寸為 0 時使用預設值
+        if content_w <= 0:
+            content_w = 600
+        if content_h <= 0:
+            content_h = 500
+
+        scene = QGraphicsScene()
+        proxy = QGraphicsProxyWidget()
+        proxy.setWidget(inner_widget)
+        scene.addItem(proxy)
+
+        proxy.setTransformOriginPoint(content_w / 2, content_h / 2)
+        proxy.setRotation(-90)
+
+        scene.setSceneRect(
+            -(content_h - content_w) / 2,
+            -(content_w - content_h) / 2,
+            content_h,
+            content_w
+        )
+
+        view = QGraphicsView(scene)
+        view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        view.setFrameShape(view.NoFrame)
+        view.setStyleSheet("background-color: rgba(0,0,0,128); border: none;")
+
+        outer_dialog = QDialog(self)
+        outer_dialog.setWindowFlags(
+            Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
+        )
+        outer_dialog.setModal(True)
+
+        outer_layout = QVBoxLayout(outer_dialog)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        outer_layout.setSpacing(0)
+        outer_layout.addWidget(view)
+
+        outer_dialog.move(screen.x(), screen.y())
+        outer_dialog.resize(screen_w, screen_h)
+
+        return outer_dialog
+
 
     def _show_full_spectrum_color_picker(self) -> QColor:
-        """顯示完整色譜選擇器"""
-        return QColorDialog.getColor(self.current_color, self, "選擇畫筆顏色")
+        """顯示完整色譜選擇器（支援直向旋轉）"""
+        orientation = getattr(self, '_toolbar_orientation', 'landscape')
 
+        if orientation == "portrait":
+            return self._show_rotated_color_picker()   # ✅ 呼叫下方新增的方法
+        else:
+            return QColorDialog.getColor(self.current_color, self, "選擇畫筆顏色")
+
+
+    def _show_rotated_color_picker(self) -> QColor:
+        """🆕 直向模式的完整色譜選擇器（旋轉版）"""
+        from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QGraphicsView,
+                                    QGraphicsScene, QGraphicsProxyWidget)
+
+        # ── 1. 建立內層容器 ──
+        inner_container = QWidget()
+        inner_container.setStyleSheet("background-color: white;")
+        inner_layout = QVBoxLayout(inner_container)
+        inner_layout.setContentsMargins(0, 0, 0, 0)
+
+        color_dialog = QColorDialog(self.current_color)
+        color_dialog.setWindowFlags(Qt.Widget)
+        color_dialog.setOption(QColorDialog.DontUseNativeDialog, True)
+        inner_layout.addWidget(color_dialog)
+
+        inner_container.adjustSize()
+        inner_container.setFixedSize(inner_container.sizeHint())
+
+        # ── 2. 包裝旋轉 ──
+        outer_dialog = self._wrap_dialog_with_rotation(inner_container)
+
+        # ── 3. 連接信號 ──
+        selected_color = [self.current_color]
+
+        def on_color_selected(color):
+            selected_color[0] = color
+            outer_dialog.accept()
+
+        def on_rejected():
+            selected_color[0] = QColor()
+            outer_dialog.reject()
+
+        color_dialog.colorSelected.connect(on_color_selected)
+        color_dialog.rejected.connect(on_rejected)
+
+        outer_dialog.exec_()
+        return selected_color[0]
 
 
     def _show_palette_color_picker(self) -> QColor:
-        """🆕 顯示 24 色調色盤選擇器"""
-        from PyQt5.QtWidgets import QDialog, QGridLayout, QPushButton, QVBoxLayout, QLabel
-        
-        dialog = QDialog(self)
-        dialog.setWindowTitle("選擇顏色")
-        dialog.setModal(True)
-        
-        main_layout = QVBoxLayout()
-        
-        # 標題
+        """顯示調色盤選擇器（支援直向旋轉）"""
+        from PyQt5.QtWidgets import (QDialog, QGridLayout, QPushButton,
+                                    QVBoxLayout, QLabel, QWidget)
+
+        orientation = getattr(self, '_toolbar_orientation', 'landscape')
+
+        # ── 建立調色盤內容 Widget ──
+        content_widget = QWidget()
+        content_widget.setStyleSheet("background-color: white;")
+
+        main_layout = QVBoxLayout(content_widget)
+        main_layout.setContentsMargins(30, 30, 30, 30)
+        main_layout.setSpacing(15)
+
         title = QLabel("請選擇顏色:")
         title.setStyleSheet("font-size: 20px; font-weight: bold;")
         main_layout.addWidget(title)
-        
-        # 顏色網格
+
         grid_layout = QGridLayout()
         grid_layout.setSpacing(10)
-        
+
         palette = self.current_test_config.toolbar.color_palette
-        selected_color = [None]  # 使用列表以便在閉包中修改
-        
-        def create_color_button(color_hex):
+        selected_color = [None]
+
+        # ── 決定顯示幾色、幾欄 ──
+        mode = self.current_test_config.toolbar.color_picker_mode
+        if mode == ColorPickerMode.PALETTE_12:
+            max_colors, cols = 12, 6
+        elif mode == ColorPickerMode.PALETTE_48:
+            max_colors, cols = 48, 8
+        else:  # PALETTE_24
+            max_colors, cols = 24, 6
+
+        # ── 建立顏色按鈕 ──
+        # dialog 用列表存放，讓閉包能存取
+        dialog_ref = [None]
+
+        def on_color_selected(color_hex):
+            selected_color[0] = QColor(color_hex)
+            if dialog_ref[0]:
+                dialog_ref[0].accept()
+
+        for i, color_hex in enumerate(palette[:max_colors]):
             btn = QPushButton()
             btn.setFixedSize(60, 60)
             btn.setStyleSheet(f"""
@@ -1738,53 +1860,50 @@ class WacomDrawingCanvas(QWidget):
                     border: 3px solid #333333;
                 }}
             """)
-            btn.clicked.connect(lambda: on_color_selected(color_hex))
-            return btn
-        
-        def on_color_selected(color_hex):
-            selected_color[0] = QColor(color_hex)
-            dialog.accept()
-        
-        # 排列為 6x4 網格
-        mode = self.current_test_config.toolbar.color_picker_mode
-        if mode == ColorPickerMode.PALETTE_12:
-            max_colors = 12
-            cols = 6
-        elif mode == ColorPickerMode.PALETTE_48:
-            max_colors = 48
-            cols = 8
-        else:  # PALETTE_24
-            max_colors = 24
-            cols = 6
+            btn.clicked.connect(lambda checked, c=color_hex: on_color_selected(c))
+            grid_layout.addWidget(btn, i // cols, i % cols)
 
-        for i, color_hex in enumerate(palette[:max_colors]):
-            row = i // cols
-            col = i % cols
-            grid_layout.addWidget(create_color_button(color_hex), row, col)
-        
         main_layout.addLayout(grid_layout)
-        
-        # 取消按鈕
+
+        # ── 取消按鈕 ──
         cancel_btn = QPushButton("取消")
         cancel_btn.setStyleSheet("""
             QPushButton {
-                background-color: #f44336;
-                color: white;
                 font-size: 18px;
                 min-height: 40px;
                 border-radius: 5px;
             }
         """)
-        cancel_btn.clicked.connect(dialog.reject)
+        cancel_btn.clicked.connect(lambda: dialog_ref[0].reject() if dialog_ref[0] else None)
         main_layout.addWidget(cancel_btn)
-        
-        dialog.setLayout(main_layout)
-        
-        # 顯示對話框
-        if dialog.exec_() == QDialog.Accepted and selected_color[0]:
-            return selected_color[0]
+
+        # ── 根據方向決定顯示方式 ──
+        if orientation == "portrait":
+            # 直向：先固定尺寸，再包裝旋轉
+            content_widget.adjustSize()
+            content_widget.setFixedSize(content_widget.sizeHint())
+
+            outer_dialog = self._wrap_dialog_with_rotation(content_widget)
+            dialog_ref[0] = outer_dialog
+
+            if outer_dialog.exec_() == QDialog.Accepted and selected_color[0]:
+                return selected_color[0]
+            return QColor()
+
         else:
-            return QColor()  # 返回無效顏色
+            # 橫向：直接顯示普通對話框
+            dialog = QDialog(self)
+            dialog.setWindowTitle("選擇顏色")
+            dialog.setModal(True)
+            dialog_ref[0] = dialog
+
+            layout = QVBoxLayout(dialog)
+            layout.addWidget(content_widget)
+
+            if dialog.exec_() == QDialog.Accepted and selected_color[0]:
+                return selected_color[0]
+            return QColor()
+
 
 
     def _create_control_window(self):
@@ -2983,6 +3102,30 @@ def test_wacom_with_full_system():
     print("✅ 處理已啟動（外部輸入模式）")
 
     app = QApplication(sys.argv)
+
+    # 🆕 載入 Qt 中文翻譯（解決 QColorDialog 英文問題）
+    from PyQt5.QtCore import QTranslator, QLocale, QLibraryInfo
+
+    translator = QTranslator()
+    qt_translations_path = QLibraryInfo.location(QLibraryInfo.TranslationsPath)
+
+    # ✅ 修正：用 QLocale(QLocale.Chinese) 建立物件，而非直接傳 Language 枚舉
+    if translator.load(QLocale(QLocale.Chinese), "qtbase", "_", qt_translations_path):
+        app.installTranslator(translator)
+        print("✅ Qt 中文翻譯已載入")
+    else:
+        # 🆕 備用方案：直接指定繁體中文檔名
+        fallback_loaded = (
+            translator.load("qtbase_zh_TW", qt_translations_path) or
+            translator.load("qtbase_zh",    qt_translations_path)
+        )
+        if fallback_loaded:
+            app.installTranslator(translator)
+            print("✅ Qt 中文翻譯已載入（備用方案）")
+        else:
+            print("⚠️ Qt 中文翻譯載入失敗（翻譯檔可能不存在）")
+
+
     
     # 先選擇 Workspace
     while True:
