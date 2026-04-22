@@ -166,8 +166,8 @@ class WorkspaceSelectionDialog(QDialog):
         for filepath in workspace_files:
             try:
                 workspace = WorkspaceConfig.load_from_file(str(filepath))
-                display_text = f"{workspace.project_name} ({filepath.stem})"
-                
+                project_id = Path(filepath.stem).stem  # "xxx.workspace" → "xxx"
+                display_text = f"{project_id} ({workspace.project_name})"    
                 item = QListWidgetItem(display_text)
                 item.setData(Qt.UserRole, str(filepath))
                 self.workspace_list.addItem(item)
@@ -637,11 +637,12 @@ class WorkspaceEditorDialog(QDialog):
         
         info_form = QFormLayout()
         
-        self.project_name_edit = QLineEdit()
-        info_form.addRow("專案名稱:", self.project_name_edit)
-        
         self.project_id_edit = QLineEdit()
         info_form.addRow("專案 ID:", self.project_id_edit)
+
+        self.project_name_edit = QLineEdit()
+        info_form.addRow("專案名稱:", self.project_name_edit)
+
         
         self.version_edit = QLineEdit()
         info_form.addRow("版本:", self.version_edit)
